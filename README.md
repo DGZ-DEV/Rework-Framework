@@ -46,7 +46,7 @@
 - `ReworkParallel`: Despacho de simulaciones intensivas a hilos secundarios con entrega segura al hilo principal de RimWorld.
 - `ReworkCache`: Capa de caché con TTL en ticks para optimizar bucles pesados.
 
-### 5. Suite de Diagnóstico Integrada (Bloque 19)
+### 5. Suite de Diagnóstico Integrada
 - Abre el **Inspector de Runtime** (`Dialog_ReworkInspector`) directamente en el juego: perfilador de memoria, explorador de clases, telemetría de hilos, consola de desarrollo y visor de parches aplicados.
 
 ---
