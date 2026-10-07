@@ -28,6 +28,17 @@
 
 ---
 
+## 📥 Installation
+
+1. Copy the `Rework Reforjed` folder into `RimWorld\Mods\`.
+2. Enable it in the RimWorld **Mods** menu.
+3. **Load order:** drag `Rework Reforjed` **to the very top**, right below `Core`/expansions.
+4. First launch restarts the loading in place automatically — the game process never closes.
+
+Uninstall: just disable the mod in the Mods menu. Your game DLLs were never touched.
+
+---
+
 ## 🌟 Main Features
 
 ### 1. Real Structural Injection
@@ -48,6 +59,33 @@
 
 ### 5. Integrated Diagnostics Suite
 - Open the **Runtime Inspector** (`Dialog_ReworkInspector`) directly in-game: memory profiler, class explorer, thread telemetry, developer console and applied-patch viewer.
+
+---
+
+## 🗂️ Repository layout
+
+```
+Rework Reforjed/
+├── About/                    Mod metadata (About.xml, preview image)
+├── Assemblies/               Ready-to-play compiled DLLs
+│   ├── 0ReworkData.dll       Persistent data store (survives the in-place reload)
+│   ├── 0ReworkAPI.dll        Public API surface for external modders
+│   ├── ReworkCore.dll        Mono.Cecil rewriting engine and boot orchestrator
+│   └── Rework.dll            RimWorld mod assembly (settings, UI, devtools)
+└── Source/                   Solution with the 4 projects (ReworkData, ReworkAPI, ReworkCore, ReworkMod)
+```
+
+---
+
+## 🛠️ Building from source
+
+Requirements: [.NET SDK 8.0+](https://dotnet.microsoft.com/download)
+
+```powershell
+dotnet build "Source\Rework.slnx" -c Release
+```
+
+The compiled libraries are generated automatically under `Assemblies/`.
 
 ---
 
