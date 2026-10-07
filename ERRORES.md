@@ -1,176 +1,177 @@
 # Rework Reforjed — ERRORES
 
-What you must **NOT** use, **NOT** touch and **NOT** do. These are the hard rules of the
-framework: every item here caused a real crash, a corrupt save, or a broken boot. Read this
-before shipping any mod based on Rework.
+Lo que **NO** debes usar, **NO** tocar y **NO** hacer. Estas son las reglas duras del
+framework: cada punto de aquí causó un crash real, un guardado corrupto o un arranque roto.
+Léelo antes de publicar cualquier mod basado en Rework.
 
 ---
 
-## 1. NEVER use Harmony
+## 1. NUNCA uses Harmony
 
-Rework is a **complete replacement for Harmony**. Never use Harmony to patch IL at runtime,
-never use machine-code trampolines, and never wrap game methods with Harmony prefixes or
-postfixes alongside Rework patches.
+Rework es un **reemplazo TOTAL de Harmony**. Nunca uses Harmony para parchear IL en runtime,
+nunca uses trampolines de código máquina y nunca envuelvas métodos del juego con prefixes o
+postfixes de Harmony junto a los parches de Rework.
 
-- If a mod brings Harmony assemblies (`0Harmony.dll`, `HarmonySharedState`), Rework detects
-  them and treats them as read-only protected assemblies (no patches, no attribute
-  processing) to avoid runtime collisions. Coexistence is passive: do not expect them to
-  interoperate.
+- Si un mod trae ensamblados de Harmony (`0Harmony.dll`, `HarmonySharedState`), Rework los
+  detecta y los trata como ensamblados protegidos de solo-lectura (sin parches, sin
+  procesamiento de atributos) para evitar colisiones de runtime. La coexistencia es pasiva:
+  no esperes que interoperen.
 
-## 2. NEVER touch game DLLs on disk
+## 2. NUNCA toques los DLL del juego en disco
 
-The original RimWorld DLLs are **never modified**. Everything happens in memory with
-Mono.Cecil. Do not write a launcher, a swap system or a manual step that patches
-`Assembly-CSharp.dll` on disk — this was tried and discarded because it required the game to
-be closed, broke portability, and generated distrust.
+Los DLL originales de RimWorld **nunca se modifican**. Todo ocurre en memoria con
+Mono.Cecil. No escribas un launcher, un sistema de swap ni un paso manual que parchee
+`Assembly-CSharp.dll` en disco — se probó y se descartó porque requería el juego cerrado,
+rompía la portabilidad y generaba desconfianza.
 
-## 3. Do NOT add a mod interface to a game class
+## 3. NO añadas una interfaz de tu mod a una clase del juego
 
-Adding an interface from your mod (which gets reloaded) to a game class
-(e.g. `Verse.Pawn : IReworkContadorLogros`) breaks the class **vtable** at startup:
+Añadir una interfaz de tu mod (que se recarga) a una clase del juego
+(p. ej. `Verse.Pawn : IReworkContadorLogros`) rompe la **vtable** de la clase al arrancar:
 
 - `TypeLoadException: Could not load type 'Verse.Pawn[]'...`
 - `TypeLoadException: VTable setup of type Verse.Pawn failed`
 
-**This is structural, not a bug to work around.** Safe alternative: create a **new subclass**
-that inherits from the game class (the `ReworkWorldCameraDriver` pattern) and substitute its
-use — never change the existing class.
+**Es estructural, no un bug que se pueda esquivar.** Alternativa segura: crea una **subclase
+NUEVA** que herede de la clase del juego (el patrón `ReworkWorldCameraDriver`) y sustituye su
+uso — nunca modifiques la clase existente.
 
-## 4. Do NOT change a game class base type
+## 4. NO cambies la clase base de una clase del juego
 
-Changing the base class of a game type corrupts the vtable/layout and fails at startup. The
-same safe alternative applies: subclass, don't modify.
+Cambiar la clase base de un tipo del juego corrompe la vtable/layout y falla al arrancar.
+Aplica la misma alternativa segura: subclasea, no modifiques.
 
-## 5. Do NOT add fields inside structs
+## 5. NO añadas campos dentro de structs
 
-Adding a field **inside an existing struct** — or changing its size — breaks the memory
-layout and value-copy semantics. Fields can only be added to **classes** (reference types).
-A struct used as a field TYPE on a class does work (e.g. `Verse.IntVec3` on `Verse.Pawn`).
+Añadir un campo **dentro de un struct existente** — o cambiar su tamaño — rompe el layout de
+memoria y la semántica de copia por valor. Los campos solo pueden añadirse a **clases**
+(tipos de referencia). Un struct usado como TIPO de campo en una clase sí funciona
+(p. ej. `Verse.IntVec3` en `Verse.Pawn`).
 
-## 6. Do NOT reference `[ReworkInterface]` / `[ReworkMethod]`-style events/ctors you don't need
+## 6. NO uses `[ReworkInterface]` ni eventos/constructores declarativos que no existan
 
-Only these declarative additions are supported: methods, properties, attributes. **Events
-and constructors have no declarative API.** If you need them, write pure Cecil via a
-`[ReworkPatch]` — and only if you really understand the target method. Unsupported additions
-are skipped with a report; they never silently half-apply.
+Solo estas adiciones declarativas están soportadas: métodos, propiedades y atributos.
+**Los eventos y constructores no tienen API declarativa.** Si los necesitas, escribe Cecil
+puro vía `[ReworkPatch]` — y solo si entiendes bien el método destino. Las adiciones no
+soportadas se omiten con un aviso; nunca se aplican a medias en silencio.
 
-## 7. Do NOT serialize arrays or object collections automatically
+## 7. NO serialices arrays ni colecciones de objetos automáticamente
 
-`[ReworkField(Serialize = true)]` supports: primitives, `string`, enums,
-`List<primitive/string/enum>`, `Dictionary<K,V>` and `HashSet<T>` (of primitives/string/
-enums). It does **NOT** support:
+`[ReworkField(Serialize = true)]` soporta: primitivas, `string`, enums,
+`List<primitiva/string/enum>`, `Dictionary<K,V>` y `HashSet<T>` (de primitivas/string/
+enums). **NO** soporta:
 
 - arrays (`T[]`)
-- collections of objects (references / Deep)
-- other generics (`Stack`, `Queue`, …)
+- colecciones de objetos (referencias / Deep)
+- otros genéricos (`Stack`, `Queue`, …)
 
-An unsupported type still works at runtime but does **not** travel in the save — Rework logs
-a clear error and never breaks the saved game. Use a `List` or manual Scribe for those cases.
+Un tipo no soportado funciona en runtime pero **no viaja en el guardado** — Rework loguea un
+error claro y nunca rompe la partida guardada. Usa un `List` o Scribe manual en esos casos.
 
-## 8. Do NOT delete exception-handler boundaries in a transpiler
+## 8. NO borres los límites de los manejadores de excepción en un transpiler
 
-The transpiler mode reuses the same MethodBody and **preserves exception handlers**. If you
-delete the boundary instructions of an `try/catch` region, that handler is discarded with a
-warning. Worst case this corrupts the target method and gives a black boot. Keep EH regions
-intact; only touch the instructions you need.
+El modo transpiler reutiliza el mismo MethodBody y **preserva los manejadores de excepción**.
+Si borras las instrucciones límite de una región `try/catch`, ese manejador se descarta con
+un aviso. En el peor caso corrompes el método destino y obtienes un arranque en negro.
+Mantén intactas las regiones EH; toca solo las instrucciones que necesites.
 
-## 9. IL helpers: do NOT use numeric `Starg`/`Ldarg` operands
+## 9. Helpers de IL: NO uses operandos numéricos en `Starg`/`Ldarg`
 
-`Starg`/`Ldarg` with a numeric `(byte)` operand throws
-`ArgumentException: opcode` — the opcode expects a `ParameterReference`, not an int.
+`Starg`/`Ldarg` con un operando numérico `(byte)` lanza `ArgumentException: opcode` — el
+opcode espera un `ParameterReference`, no un int.
 
-- Use `Starg(ParameterDefinition)` / `Ldarg` with the real `ParameterDefinition`
-  (e.g. `targetMethod.Parameters[i-1]`).
-- Short forms `Ldarg_0` … `Ldarg_3` are safe.
+- Usa `Starg(ParameterDefinition)` / `Ldarg` con el `ParameterDefinition` real
+  (p. ej. `targetMethod.Parameters[i-1]`).
+- Las formas cortas `Ldarg_0` … `Ldarg_3` son seguras.
 
-## 10. Do NOT rely on `InsertBefore` ordering blindly
+## 10. NO confíes a ciegas en el orden de `InsertBefore`
 
-When injecting a context-taking hook, the correct IL is `ldarg.0; call hook`. If you insert
-`call` and then `ldarg.0`, you get `call; ldarg.0` → invalid stack →
-`System.InvalidProgramException: Invalid IL code ... IL_0000: call` at the moment the method
-runs (the boot will NOT detect it — only the log line when it executes). Insert `ldarg.0`
-FIRST, then `call`. This is handled automatically by the framework; do not re-insert
-manually.
+Al inyectar un hook con contexto, el IL correcto es `ldarg.0; call hook`. Si insertas `call`
+y luego `ldarg.0`, obtienes `call; ldarg.0` → pila inválida →
+`System.InvalidProgramException: Invalid IL code ... IL_0000: call` en el momento en que el
+método se ejecuta (el arranque NO lo detectará — solo la línea del log al ejecutarse).
+Inserta `ldarg.0` PRIMERO y luego `call`. El framework ya lo maneja automáticamente; no
+re-insiertes manualmente.
 
-## 11. Do NOT create duplicate assembly names
+## 11. NO crees nombres de ensamblado duplicados
 
-A mod assembly with the same simple name as another causes vanilla to deduplicate to a
-single runtime identity; processing both against the same module duplicates effects and is
-chaotic from the root. Rules:
+Un ensamblado de mod con el mismo nombre simple que otro hace que vanilla deduplique a una
+única identidad de runtime; procesar ambos contra el mismo módulo duplica efectos y es
+caótico de raíz. Reglas:
 
-- Keep assembly names **unique**.
-- Never re-bundle `0ReworkAPI.dll` or `Mono.Cecil.dll` — reference the API with
-  `<Private>false</Private>` / `ExcludeAssets="runtime"` so it resolves against Rework's copy
-  (same version → same identity).
+- Mantén los nombres de ensamblado **únicos**.
+- Nunca re-empaques `0ReworkAPI.dll` ni `Mono.Cecil.dll` — referencia la API con
+  `<Private>false</Private>` / `ExcludeAssets="runtime"` para que resuelva contra la copia de
+  Rework (misma versión → misma identidad).
 
-## 12. Do NOT register Defs during Pass 1 or early mod init
+## 12. NO registres Defs durante la Pasada 1 ni en la init temprana de mods
 
-`DefDatabase` registration (Jobs, Incidents, WorkGivers, …) cannot happen during the first
-pass or in early `LoadedModManager.InitializeMods` — vanilla Defs are not loaded yet. Always
-use `[StaticConstructorOnStartup]` (the framework registries do this for you). Doing it early
-silently produces empty/broken Defs.
+El registro en `DefDatabase` (Jobs, Incidentes, WorkGivers, …) no puede ocurrir durante la
+primera pasada ni en `LoadedModManager.InitializeMods` temprano — los Defs vanilla aún no
+están cargados. Usa siempre `[StaticConstructorOnStartup]` (los registradores del framework
+lo hacen por ti). Hacerlo temprano produce Defs vacíos/rotos en silencio.
 
-## 13. Do NOT make hook bodies heavy (tick hooks fire 60/s)
+## 13. NO hagas cuerpos de hooks pesados (los hooks de tick disparan 60/s)
 
-`MapTick`, `PawnTick`, `GameComponentTick`, `MapComponentTick`, `WorldComponentTick` and
-`StorytellerTick` fire 60 times per second. Keep the body extremely cheap or use a counter /
-interval, or you will tank performance.
+`MapTick`, `PawnTick`, `GameComponentTick`, `MapComponentTick`, `WorldComponentTick` y
+`StorytellerTick` se disparan 60 veces por segundo. Mantén el cuerpo baratísimo o usa un
+contador/intervalo, o hundirás el rendimiento.
 
-## 14. Do NOT assume `this` is the hook context
+## 14. NO asumas que `this` es el contexto del hook
 
-Some hooks pass a different subject:
+Algunos hooks pasan otro sujeto:
 
-- `CurrentMapChanged` → the NEW map (setter parameter).
-- `BabyBorn` → the biological MOTHER (parameter 5; the baby is not yet a Pawn).
-- `CaravanEnteredMap` → the destination `Verse.Map` (parameter 2).
-- `PawnLeftToCaravan` → the leaving pawn (parameter 1).
+- `CurrentMapChanged` → el mapa NUEVO (parámetro del setter).
+- `BabyBorn` → la MADRE biológica (parámetro 5; el bebé aún no es un Pawn).
+- `CaravanEnteredMap` → el `Verse.Map` destino (parámetro 2).
+- `PawnLeftToCaravan` → el pawn que sale (parámetro 1).
 
-The framework validates that your parameter type matches; if not, the hook is skipped with a
-report.
+El framework valida que tu tipo de parámetro coincida; si no, el hook se omite con un aviso.
 
-## 15. Do NOT treat "clean boot" as proof the logic runs
+## 15. NO trates el "arranque limpio" como prueba de que la lógica funciona
 
-A clean boot (0 NREs, `VERIFICACIÓN OK`) proves the rewrite applied, **not** that the logic
-fires correctly. IL/patching errors that only appear when a method executes (like the
-`InvalidProgramException` in §10) do not show at boot. Always validate behavior in a real
-game session: save/load, kill a pawn, spawn a caravan, etc.
+Un arranque limpio (0 NREs, `VERIFICACIÓN OK`) prueba que la reescritura se aplicó,
+**no** que la lógica se dispare correctamente. Los errores de IL/parcheo que solo aparecen al
+ejecutar un método (como el `InvalidProgramException` del §10) no salen en el arranque.
+Valida siempre el comportamiento en una sesión real: guardar/cargar, matar un pawn, crear una
+caravana, etc.
 
-## 16. Do NOT use Defs inside `[ReworkInit]`
+## 16. NO uses Defs dentro de `[ReworkInit]`
 
-`[ReworkInit]` runs in the mod-loading phase, **before Defs are loaded**. Do not touch
-`SkillDefOf`/`ThingDefOf`/etc. there. If you need Defs, combine with vanilla
+`[ReworkInit]` corre en la fase de carga de mods, **antes de que los Defs estén cargados**.
+No toques `SkillDefOf`/`ThingDefOf`/etc. ahí. Si necesitas Defs, combina con el vanilla
 `[StaticConstructorOnStartup]`.
 
-## 17. Do NOT disable safety and ignore the log
+## 17. NO desactives la seguridad ni ignores el log
 
-- **Proactive safe mode:** if the environment check fails (runtime not Mono or native layout
-  unexpected), Rework rewrites nothing and starts vanilla with a warning. Do not "fix" this
-  by forcing a rewrite — it protects against corrupted memory.
-- **`Rework.log`:** read it. Every trap below has a clear message there. Errors such as
-  "No se puede serializar automáticamente" or "campo no soportado" are benign by design; do
-  not silence or suppress them without reading the reason.
-- **`ReworkConfig` exclusion:** excluded mods are not processed at all. If a mod "silently
-  does nothing", check it is not in `ExcludedMods`.
+- **Modo seguro proactivo:** si la verificación del entorno falla (runtime no Mono o layout
+  nativo inesperado), Rework no reescribe nada y arranca vanilla con un aviso. No lo
+  "arregles" forzando una reescritura — protege contra memoria corrupta.
+- **`Rework.log`:** léelo. Cada trampa de aquí tiene un mensaje claro allí. Errores como
+  "No se puede serializar automáticamente" o "campo no soportado" son benignos por diseño; no
+  los silencies sin leer la razón.
+- **Exclusión de `ReworkConfig`:** los mods excluidos no se procesan en absoluto. Si un mod
+  "no hace nada en silencio", comprueba que no esté en `ExcludedMods`.
 
-## 18. Do NOT share a field name across mods with different types
+## 18. NO compartas un nombre de campo entre mods con tipos distintos
 
-The first accessor with a name creates the field. Later mods with the same name+type **link
-to the shared field**; same name + different type → real conflict (the accessor is rewritten
-to throw `InvalidOperationException`). You cannot "win" an override — the first mod in load
-order owns the field.
+El primer accessor con un nombre crea el campo. Los mods posteriores con el mismo
+nombre+tipo **se enlazan al campo compartido**; mismo nombre + tipo distinto → conflicto real
+(el accessor se reescribe para lanzar `InvalidOperationException`). No puedes "ganar" un
+override — el primer mod en orden de carga es dueño del campo.
 
-## 19. Do NOT modify `0ReworkData.dll` / `0ReworkAPI.dll` identity
+## 19. NO modifiques la identidad de `0ReworkData.dll` / `0ReworkAPI.dll`
 
-`0ReworkData` survives the reload barrier (persistent DataStore) and `0ReworkAPI` is the
-public surface for modders. They are loaded before ReworkCore and must keep their identities
-and paths stable; re-signing, renaming or re-bundling them breaks the reload and the
-cross-mod API.
+`0ReworkData` sobrevive la barrera del reload (DataStore persistente) y `0ReworkAPI` es la
+superficie pública para modders. Se cargan antes que ReworkCore y deben mantener sus
+identidades y rutas estables; re-firmar, renombrar o re-empaquetarlos rompe el reload y la
+API cross-mod.
 
 ---
 
-## Verified reference lines (normal, healthy boot)
+## Líneas de referencia verificadas (arranque normal y sano)
 
-These lines are EXPECTED in a healthy startup — not errors:
+Estas líneas son ESPERADAS en un arranque sano — no son errores:
 
 ```
 Entorno: Runtime=Mono, Mono=6.13.0 (Visual Studio built mono), layoutOK=True → seguro para reescribir
@@ -178,11 +179,11 @@ VERIFICACIÓN OK: Assembly-CSharp activa es la NUEVA (rewrite en efecto) y Rewor
 Versión del juego soportada: 1.6.4850
 ```
 
-And these are the classic **boot-breaking** ones to grep for and fix:
+Y estas son las clásicas que **rompen el arranque** — búscalas y corrígelas:
 
 ```
 NullReferenceException … WorldCameraDriver / ExpandableWorldObjects
 TypeLoadException: VTable setup of type Verse.Pawn failed
 System.InvalidProgramException: Invalid IL code … IL_0000: call
-ThreadAbortException: Thread was being aborted   (pass-1 transition noise, filtered by design)
+ThreadAbortException: Thread was being aborted   (ruido de la transición de la pasada 1, filtrado por diseño)
 ```

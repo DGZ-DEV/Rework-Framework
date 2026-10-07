@@ -91,8 +91,8 @@ The compiled libraries are generated automatically under `Assemblies/`.
 
 ## 📖 Documentation
 
-- See [`MANUAL.md`](MANUAL.md) for the complete API guide, usage examples and technical specifications.
-- See [`ERRORES.md`](ERRORES.md) for known pitfalls, limitations and what you should NOT use or touch.
+- See [`MANUAL.md`](MANUAL.md) (English) / [`MANUAL_ES.md`](MANUAL_ES.md) (Spanish) for the complete API guide, usage examples and technical specifications.
+- See [`ERRORS.md`](ERRORS.md) (English) / [`ERRORES.md`](ERRORES.md) (Spanish) for known pitfalls, limitations and what you should NOT use or touch.
 
 ---
 
