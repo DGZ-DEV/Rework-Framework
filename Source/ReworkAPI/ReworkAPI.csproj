@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 0ReworkAPI: atributos que los modders usan para declarar campos/parches.
+       Sin dependencias (ni siquiera del juego), igual que Prepatcher Source/API. -->
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>10.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Rework</RootNamespace>
+    <AssemblyName>0ReworkAPI</AssemblyName>
+    <OutputPath>..\..\Assemblies\</OutputPath>
+    <!-- 16.3 — versionado de la API: ReworkApi.Version lo lee en runtime. -->
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <InformationalVersion>1.0.0</InformationalVersion>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Solo para TranspilerHelpers (los transpilers reciben tipos Cecil: Instruction,
+         ModuleDefinition, ...). Compila contra él pero NO se empaqueta (ExcludeAssets
+         runtime): en runtime los tipos Mono.Cecil ya los carga ReworkCore. El modder que
+         use helpers ya referencia Mono.Cecil igualmente. -->
+    <PackageReference Include="Mono.Cecil" Version="0.11.6" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+</Project>

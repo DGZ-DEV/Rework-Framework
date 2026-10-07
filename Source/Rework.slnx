@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="ReworkAPI/ReworkAPI.csproj" />
+  <Project Path="ReworkCore/ReworkCore.csproj" />
+  <Project Path="ReworkData/ReworkData.csproj" />
+  <Project Path="ReworkMod/ReworkMod.csproj" />
+</Solution>

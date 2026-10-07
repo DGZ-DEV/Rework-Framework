@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModMetaData>
+  <name>Rework Reforjed</name>
+  <author>DGZ</author>
+  <packageId>dgz.rework</packageId>
+  <description>Framework de parcheo pre-carga para RimWorld (serie Reforjed).
+Reescribe Assembly-CSharp.dll con Mono.Cecil ANTES de que el juego la use, sin Harmony.
+MVP Fase 2: añade el campo int Verse.Pawn.Rework_Test y lo verifica por reflexión al arrancar.</description>
+  <supportedVersions>
+    <li>1.6</li>
+  </supportedVersions>
+</ModMetaData>

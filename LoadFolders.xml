@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- Empaquetado multi-versión (modelo Prepatcher LoadFolders.xml).
+     Por ahora solo 1.6; se añaden ramas 1.4/1.5 en Fase 3. -->
+<loadFolders>
+  <v1.6>
+    <li>/</li>
+  </v1.6>
+</loadFolders>

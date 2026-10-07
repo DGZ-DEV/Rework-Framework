@@ -1,0 +1,833 @@
+using System;
+using System.Collections.Generic;
+using System.Reflection;
+using RimWorld;
+using Rework.Core;
+using Verse;
+
+namespace Rework;
+
+/// <summary>
+/// Registrador automático de RecipeDefs declarados con [ReworkRecipe] en runtime.
+/// Se ejecuta automáticamente cuando RimWorld termina de cargar los Defs ([StaticConstructorOnStartup]).
+/// </summary>
+[StaticConstructorOnStartup]
+public static class ReworkRecipeRegistry
+{
+    private static readonly Dictionary<string, RecipeDef> registered = new();
+
+    static ReworkRecipeRegistry()
+    {
+        RegisterAll();
+    }
+
+    public static RecipeDef? Get(string defName)
+    {
+        if (string.IsNullOrEmpty(defName)) return null;
+        if (registered.TryGetValue(defName, out var def)) return def;
+        return DefDatabase<RecipeDef>.GetNamedSilentFail(defName);
+    }
+
+    public static void RegisterAll()
+    {
+        int count = 0;
+        foreach (var mod in LoadedModManager.RunningModsListForReading)
+        {
+            if (ReworkConfig.ExcludedMods.Contains(mod.PackageIdPlayerFacing)
+                || ReworkConfig.ExcludedMods.Contains(mod.Name))
+                continue;
+
+            foreach (var asm in mod.assemblies.loadedAssemblies)
+            {
+                Type[] types;
+                try { types = asm.GetTypes(); }
+                catch (ReflectionTypeLoadException e) { types = e.Types; }
+                catch { continue; }
+
+                foreach (var type in types)
+                {
+                    if (type == null || !type.IsClass || type.IsAbstract) continue;
+                    var attr = type.GetCustomAttribute<ReworkRecipeAttribute>();
+                    if (attr == null) continue;
+
+                    if (!typeof(RecipeWorker).IsAssignableFrom(type))
+                    {
+                        Lg.Error($"[ReworkRecipe] '{type.FullName}' tiene [ReworkRecipe] pero no hereda de Verse.RecipeWorker.");
+                        continue;
+                    }
+
+                    if (Register(attr, type)) count++;
+                }
+            }
+        }
+
+        Lg.Info($"ReworkRecipeRegistry: {count} receta(s) declarativa(s) [ReworkRecipe] registrada(s) en DefDatabase.");
+    }
+
+    private static bool Register(ReworkRecipeAttribute attr, Type workerType)
+    {
+        try
+        {
+            var existing = DefDatabase<RecipeDef>.GetNamedSilentFail(attr.DefName);
+            if (existing != null)
+            {
+                registered[attr.DefName] = existing;
+                return false;
+            }
+
+            var recipeDef = new RecipeDef
+            {
+                defName = attr.DefName,
+                label = attr.Label ?? attr.DefName,
+                description = attr.Description ?? "Receta registrada por Rework.",
+                jobString = attr.JobString,
+                workAmount = attr.WorkAmount,
+                workerClass = workerType
+            };
+
+            // Enlazar mesas si se especificaron
+            if (!string.IsNullOrEmpty(attr.RecipeUsers))
+            {
+                recipeDef.recipeUsers = new List<ThingDef>();
+                var users = attr.RecipeUsers.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var userName in users)
+                {
+                    var userTrimmed = userName.Trim();
+                    var thingDef = DefDatabase<ThingDef>.GetNamedSilentFail(userTrimmed);
+                    if (thingDef != null)
+                    {
+                        recipeDef.recipeUsers.Add(thingDef);
+                        if (thingDef.recipes == null) thingDef.recipes = new List<RecipeDef>();
+                        if (!thingDef.recipes.Contains(recipeDef))
+                            thingDef.recipes.Add(recipeDef);
+                    }
+                }
+            }
+
+            DefDatabase<RecipeDef>.Add(recipeDef);
+            registered[attr.DefName] = recipeDef;
+            Lg.Info($"[ReworkRecipe] Registrada RecipeDef '{attr.DefName}' -> {workerType.Name}.");
+            return true;
+        }
+        catch (Exception e)
+        {
+            Lg.Error($"[ReworkRecipe] Error registrando RecipeDef '{attr.DefName}': {e}");
+            return false;
+        }
+    }
+}
+
+/// <summary>
+/// Registrador automático de HediffDefs declarados con [ReworkHediff] en runtime.
+/// </summary>
+[StaticConstructorOnStartup]
+public static class ReworkHediffRegistry
+{
+    private static readonly Dictionary<string, HediffDef> registered = new();
+
+    static ReworkHediffRegistry()
+    {
+        RegisterAll();
+    }
+
+    public static HediffDef? Get(string defName)
+    {
+        if (string.IsNullOrEmpty(defName)) return null;
+        if (registered.TryGetValue(defName, out var def)) return def;
+        return DefDatabase<HediffDef>.GetNamedSilentFail(defName);
+    }
+
+    public static void RegisterAll()
+    {
+        int count = 0;
+        foreach (var mod in LoadedModManager.RunningModsListForReading)
+        {
+            if (ReworkConfig.ExcludedMods.Contains(mod.PackageIdPlayerFacing)
+                || ReworkConfig.ExcludedMods.Contains(mod.Name))
+                continue;
+
+            foreach (var asm in mod.assemblies.loadedAssemblies)
+            {
+                Type[] types;
+                try { types = asm.GetTypes(); }
+                catch (ReflectionTypeLoadException e) { types = e.Types; }
+                catch { continue; }
+
+                foreach (var type in types)
+                {
+                    if (type == null || !type.IsClass || type.IsAbstract) continue;
+                    var attr = type.GetCustomAttribute<ReworkHediffAttribute>();
+                    if (attr == null) continue;
+
+                    if (!typeof(Hediff).IsAssignableFrom(type))
+                    {
+                        Lg.Error($"[ReworkHediff] '{type.FullName}' tiene [ReworkHediff] pero no hereda de Verse.Hediff.");
+                        continue;
+                    }
+
+                    if (Register(attr, type)) count++;
+                }
+            }
+        }
+
+        Lg.Info($"ReworkHediffRegistry: {count} Hediff(s) declarativo(s) [ReworkHediff] registrado(s) en DefDatabase.");
+    }
+
+    private static bool Register(ReworkHediffAttribute attr, Type hediffType)
+    {
+        try
+        {
+            var existing = DefDatabase<HediffDef>.GetNamedSilentFail(attr.DefName);
+            if (existing != null)
+            {
+                registered[attr.DefName] = existing;
+                return false;
+            }
+
+            var hediffDef = new HediffDef
+            {
+                defName = attr.DefName,
+                label = attr.Label ?? attr.DefName,
+                description = attr.Description ?? "Condición de salud registrada por Rework.",
+                hediffClass = hediffType,
+                initialSeverity = attr.InitialSeverity,
+                lethalSeverity = attr.LethalSeverity,
+                isBad = attr.IsBad
+            };
+
+            DefDatabase<HediffDef>.Add(hediffDef);
+            registered[attr.DefName] = hediffDef;
+            Lg.Info($"[ReworkHediff] Registrado HediffDef '{attr.DefName}' -> {hediffType.Name}.");
+            return true;
+        }
+        catch (Exception e)
+        {
+            Lg.Error($"[ReworkHediff] Error registrando HediffDef '{attr.DefName}': {e}");
+            return false;
+        }
+    }
+}
+
+/// <summary>
+/// Registrador automático de TraitDefs declarados con [ReworkTrait] en runtime.
+/// </summary>
+[StaticConstructorOnStartup]
+public static class ReworkTraitRegistry
+{
+    private static readonly Dictionary<string, TraitDef> registered = new();
+
+    static ReworkTraitRegistry()
+    {
+        RegisterAll();
+    }
+
+    public static TraitDef? Get(string defName)
+    {
+        if (string.IsNullOrEmpty(defName)) return null;
+        if (registered.TryGetValue(defName, out var def)) return def;
+        return DefDatabase<TraitDef>.GetNamedSilentFail(defName);
+    }
+
+    public static void RegisterAll()
+    {
+        int count = 0;
+        foreach (var mod in LoadedModManager.RunningModsListForReading)
+        {
+            if (ReworkConfig.ExcludedMods.Contains(mod.PackageIdPlayerFacing)
+                || ReworkConfig.ExcludedMods.Contains(mod.Name))
+                continue;
+
+            foreach (var asm in mod.assemblies.loadedAssemblies)
+            {
+                Type[] types;
+                try { types = asm.GetTypes(); }
+                catch (ReflectionTypeLoadException e) { types = e.Types; }
+                catch { continue; }
+
+                foreach (var type in types)
+                {
+                    if (type == null || !type.IsClass || type.IsAbstract) continue;
+                    var attr = type.GetCustomAttribute<ReworkTraitAttribute>();
+                    if (attr == null) continue;
+
+                    if (Register(attr, type)) count++;
+                }
+            }
+        }
+
+        Lg.Info($"ReworkTraitRegistry: {count} Trait(s) declarativo(s) [ReworkTrait] registrado(s) en DefDatabase.");
+    }
+
+    private static bool Register(ReworkTraitAttribute attr, Type declaringType)
+    {
+        try
+        {
+            var existing = DefDatabase<TraitDef>.GetNamedSilentFail(attr.DefName);
+            if (existing != null)
+            {
+                registered[attr.DefName] = existing;
+                return false;
+            }
+
+            var degreeData = new TraitDegreeData
+            {
+                label = attr.Label ?? attr.DefName,
+                description = attr.Description ?? "Rasgo de personalidad registrado por Rework.",
+                degree = attr.Degree,
+                commonality = attr.Commonality
+            };
+
+            var traitDef = new TraitDef
+            {
+                defName = attr.DefName,
+                degreeDatas = new List<TraitDegreeData> { degreeData }
+            };
+
+            DefDatabase<TraitDef>.Add(traitDef);
+            registered[attr.DefName] = traitDef;
+            Lg.Info($"[ReworkTrait] Registrado TraitDef '{attr.DefName}' ('{degreeData.label}', degree={attr.Degree}).");
+            return true;
+        }
+        catch (Exception e)
+        {
+            Lg.Error($"[ReworkTrait] Error registrando TraitDef '{attr.DefName}': {e}");
+            return false;
+        }
+    }
+}
+
+/// <summary>
+/// Registrador automático de NeedDefs declarados con [ReworkNeed] en runtime.
+/// </summary>
+[StaticConstructorOnStartup]
+public static class ReworkNeedRegistry
+{
+    private static readonly Dictionary<string, NeedDef> registered = new();
+
+    static ReworkNeedRegistry()
+    {
+        RegisterAll();
+    }
+
+    public static NeedDef? Get(string defName)
+    {
+        if (string.IsNullOrEmpty(defName)) return null;
+        if (registered.TryGetValue(defName, out var def)) return def;
+        return DefDatabase<NeedDef>.GetNamedSilentFail(defName);
+    }
+
+    public static void RegisterAll()
+    {
+        int count = 0;
+        foreach (var mod in LoadedModManager.RunningModsListForReading)
+        {
+            if (ReworkConfig.ExcludedMods.Contains(mod.PackageIdPlayerFacing)
+                || ReworkConfig.ExcludedMods.Contains(mod.Name))
+                continue;
+
+            foreach (var asm in mod.assemblies.loadedAssemblies)
+            {
+                Type[] types;
+                try { types = asm.GetTypes(); }
+                catch (ReflectionTypeLoadException e) { types = e.Types; }
+                catch { continue; }
+
+                foreach (var type in types)
+                {
+                    if (type == null || !type.IsClass || type.IsAbstract) continue;
+                    var attr = type.GetCustomAttribute<ReworkNeedAttribute>();
+                    if (attr == null) continue;
+
+                    if (!typeof(Need).IsAssignableFrom(type))
+                    {
+                        Lg.Error($"[ReworkNeed] '{type.FullName}' tiene [ReworkNeed] pero no hereda de RimWorld.Need.");
+                        continue;
+                    }
+
+                    if (Register(attr, type)) count++;
+                }
+            }
+        }
+
+        Lg.Info($"ReworkNeedRegistry: {count} Need(s) declarativa(s) [ReworkNeed] registrada(s) en DefDatabase.");
+    }
+
+    private static bool Register(ReworkNeedAttribute attr, Type needType)
+    {
+        try
+        {
+            var existing = DefDatabase<NeedDef>.GetNamedSilentFail(attr.DefName);
+            if (existing != null)
+            {
+                registered[attr.DefName] = existing;
+                return false;
+            }
+
+            var needDef = new NeedDef
+            {
+                defName = attr.DefName,
+                label = attr.Label ?? attr.DefName,
+                description = attr.Description ?? "Necesidad registrada por Rework.",
+                needClass = needType,
+                baseLevel = attr.BaseLevel,
+                fallPerDay = attr.FallPerDay,
+                colonistsOnly = attr.ColonistsOnly
+            };
+
+            DefDatabase<NeedDef>.Add(needDef);
+            registered[attr.DefName] = needDef;
+            Lg.Info($"[ReworkNeed] Registrado NeedDef '{attr.DefName}' -> {needType.Name}.");
+            return true;
+        }
+        catch (Exception e)
+        {
+            Lg.Error($"[ReworkNeed] Error registrando NeedDef '{attr.DefName}': {e}");
+            return false;
+        }
+    }
+}
+
+/// <summary>
+/// Registrador automático de Designators declarados con [ReworkDesignator] en runtime.
+/// </summary>
+[StaticConstructorOnStartup]
+public static class ReworkDesignatorRegistry
+{
+    private static readonly Dictionary<Type, DesignationCategoryDef> registered = new();
+
+    static ReworkDesignatorRegistry()
+    {
+        RegisterAll();
+    }
+
+    public static void RegisterAll()
+    {
+        int count = 0;
+        foreach (var mod in LoadedModManager.RunningModsListForReading)
+        {
+            if (ReworkConfig.ExcludedMods.Contains(mod.PackageIdPlayerFacing)
+                || ReworkConfig.ExcludedMods.Contains(mod.Name))
+                continue;
+
+            foreach (var asm in mod.assemblies.loadedAssemblies)
+            {
+                Type[] types;
+                try { types = asm.GetTypes(); }
+                catch (ReflectionTypeLoadException e) { types = e.Types; }
+                catch { continue; }
+
+                foreach (var type in types)
+                {
+                    if (type == null || !type.IsClass || type.IsAbstract) continue;
+                    var attr = type.GetCustomAttribute<ReworkDesignatorAttribute>();
+                    if (attr == null) continue;
+
+                    if (!typeof(Designator).IsAssignableFrom(type))
+                    {
+                        Lg.Error($"[ReworkDesignator] '{type.FullName}' tiene [ReworkDesignator] pero no hereda de Verse.Designator.");
+                        continue;
+                    }
+
+                    if (Register(attr, type)) count++;
+                }
+            }
+        }
+
+        Lg.Info($"ReworkDesignatorRegistry: {count} Designator(s) declarativo(s) [ReworkDesignator] enlazado(s).");
+    }
+
+    private static bool Register(ReworkDesignatorAttribute attr, Type designatorType)
+    {
+        try
+        {
+            var category = DefDatabase<DesignationCategoryDef>.GetNamedSilentFail(attr.Category)
+                           ?? DefDatabase<DesignationCategoryDef>.GetNamedSilentFail("Orders")
+                           ?? DesignationCategoryDefOf.Zone;
+
+            if (category.specialDesignatorClasses == null)
+            {
+                category.specialDesignatorClasses = new List<Type>();
+            }
+
+            if (!category.specialDesignatorClasses.Contains(designatorType))
+            {
+                category.specialDesignatorClasses.Add(designatorType);
+                registered[designatorType] = category;
+                Lg.Info($"[ReworkDesignator] Registrado {designatorType.Name} en categoría '{category.defName}'.");
+                return true;
+            }
+
+            return false;
+        }
+        catch (Exception e)
+        {
+            Lg.Error($"[ReworkDesignator] Error enlazando designator '{designatorType.Name}': {e}");
+            return false;
+        }
+    }
+}
+
+/// <summary>
+/// Registrador automático de GenSteps declarados con [ReworkGenStep] en runtime.
+/// Inyecta GenStepDef en DefDatabase y en la lista de genSteps del MapGeneratorDef.
+/// </summary>
+[StaticConstructorOnStartup]
+public static class ReworkGenStepRegistry
+{
+    private static readonly Dictionary<string, GenStepDef> registered = new();
+
+    static ReworkGenStepRegistry()
+    {
+        RegisterAll();
+    }
+
+    public static GenStepDef? Get(string defName)
+    {
+        if (string.IsNullOrEmpty(defName)) return null;
+        if (registered.TryGetValue(defName, out var def)) return def;
+        return DefDatabase<GenStepDef>.GetNamedSilentFail(defName);
+    }
+
+    public static void RegisterAll()
+    {
+        int count = 0;
+        foreach (var mod in LoadedModManager.RunningModsListForReading)
+        {
+            if (ReworkConfig.ExcludedMods.Contains(mod.PackageIdPlayerFacing)
+                || ReworkConfig.ExcludedMods.Contains(mod.Name))
+                continue;
+
+            foreach (var asm in mod.assemblies.loadedAssemblies)
+            {
+                Type[] types;
+                try { types = asm.GetTypes(); }
+                catch (ReflectionTypeLoadException e) { types = e.Types; }
+                catch { continue; }
+
+                foreach (var type in types)
+                {
+                    if (type == null || !type.IsClass || type.IsAbstract) continue;
+                    var attr = type.GetCustomAttribute<ReworkGenStepAttribute>();
+                    if (attr == null) continue;
+
+                    if (!typeof(GenStep).IsAssignableFrom(type))
+                    {
+                        Lg.Error($"[ReworkGenStep] '{type.FullName}' tiene [ReworkGenStep] pero no hereda de Verse.GenStep.");
+                        continue;
+                    }
+
+                    if (Register(attr, type)) count++;
+                }
+            }
+        }
+
+        Lg.Info($"ReworkGenStepRegistry: {count} GenStep(s) declarativo(s) [ReworkGenStep] registrado(s).");
+    }
+
+    private static bool Register(ReworkGenStepAttribute attr, Type genStepType)
+    {
+        try
+        {
+            var existing = DefDatabase<GenStepDef>.GetNamedSilentFail(attr.DefName);
+            if (existing != null)
+            {
+                registered[attr.DefName] = existing;
+                return false;
+            }
+
+            var genStepInstance = (GenStep)Activator.CreateInstance(genStepType);
+            var genStepDef = new GenStepDef
+            {
+                defName = attr.DefName,
+                order = attr.Order,
+                genStep = genStepInstance
+            };
+
+            DefDatabase<GenStepDef>.Add(genStepDef);
+            registered[attr.DefName] = genStepDef;
+
+            // Enlazar al MapGeneratorDef correspondiente
+            var mapGen = DefDatabase<MapGeneratorDef>.GetNamedSilentFail(attr.MapGenerator)
+                         ?? DefDatabase<MapGeneratorDef>.GetNamedSilentFail("MainMapGenerator");
+
+            if (mapGen != null)
+            {
+                if (mapGen.genSteps == null) mapGen.genSteps = new List<GenStepDef>();
+                if (!mapGen.genSteps.Contains(genStepDef))
+                {
+                    mapGen.genSteps.Add(genStepDef);
+                    mapGen.genSteps.Sort((a, b) => a.order.CompareTo(b.order));
+                }
+            }
+
+            Lg.Info($"[ReworkGenStep] Registrado GenStepDef '{attr.DefName}' -> {genStepType.Name} (order={attr.Order}, mapGen={mapGen?.defName}).");
+            return true;
+        }
+        catch (Exception e)
+        {
+            Lg.Error($"[ReworkGenStep] Error registrando GenStepDef '{attr.DefName}': {e}");
+            return false;
+        }
+    }
+}
+
+/// <summary>
+/// Motor de mutaciones declarativas y reversibles de Defs vanilla ([ReworkMutate]).
+/// Aplica modificaciones en runtime rastreadas y registradas en el diagnóstico.
+/// </summary>
+[StaticConstructorOnStartup]
+public static class ReworkMutateRegistry
+{
+    private class MutationRecord
+    {
+        public Def TargetDef = null!;
+        public FieldInfo Field = null!;
+        public object? OriginalValue;
+        public object? MutatedValue;
+    }
+
+    private static readonly List<MutationRecord> history = new();
+
+    static ReworkMutateRegistry()
+    {
+        ApplyAll();
+    }
+
+    public static int AppliedCount => history.Count;
+
+    public static void ApplyAll()
+    {
+        int count = 0;
+        foreach (var mod in LoadedModManager.RunningModsListForReading)
+        {
+            if (ReworkConfig.ExcludedMods.Contains(mod.PackageIdPlayerFacing)
+                || ReworkConfig.ExcludedMods.Contains(mod.Name))
+                continue;
+
+            foreach (var asm in mod.assemblies.loadedAssemblies)
+            {
+                // Mutaciones a nivel de ensamblado
+                var asmAttrs = asm.GetCustomAttributes<ReworkMutateAttribute>();
+                foreach (var attr in asmAttrs)
+                {
+                    if (ApplyMutation(attr)) count++;
+                }
+
+                Type[] types;
+                try { types = asm.GetTypes(); }
+                catch (ReflectionTypeLoadException e) { types = e.Types; }
+                catch { continue; }
+
+                foreach (var type in types)
+                {
+                    if (type == null) continue;
+                    var typeAttrs = type.GetCustomAttributes<ReworkMutateAttribute>();
+                    foreach (var attr in typeAttrs)
+                    {
+                        if (ApplyMutation(attr)) count++;
+                    }
+                }
+            }
+        }
+
+        Lg.Info($"ReworkMutateRegistry: {count} mutación(es) declarativa(s) [ReworkMutate] aplicada(s) sobre Defs.");
+    }
+
+    private static bool ApplyMutation(ReworkMutateAttribute attr)
+    {
+        try
+        {
+            // Resolver el Def objetivo
+            Def? target = null;
+            if (attr.DefType != null)
+            {
+                target = GenDefDatabase.GetDefSilentFail(attr.DefType, attr.DefName, false);
+            }
+            else
+            {
+                // Búsqueda en los tipos más comunes
+                target = DefDatabase<ThingDef>.GetNamedSilentFail(attr.DefName)
+                         ?? (Def)DefDatabase<IncidentDef>.GetNamedSilentFail(attr.DefName)
+                         ?? (Def)DefDatabase<RecipeDef>.GetNamedSilentFail(attr.DefName);
+            }
+
+            if (target == null)
+            {
+                Lg.Error($"[ReworkMutate] No se encontró el Def '{attr.DefName}'.");
+                return false;
+            }
+
+            // Resolver campo
+            var field = target.GetType().GetField(attr.FieldPath, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            if (field == null)
+            {
+                Lg.Error($"[ReworkMutate] Campo '{attr.FieldPath}' no encontrado en {target.GetType().Name}.");
+                return false;
+            }
+
+            object? original = field.GetValue(target);
+            object? converted = attr.Value != null ? Convert.ChangeType(attr.Value, field.FieldType) : null;
+            field.SetValue(target, converted);
+
+            history.Add(new MutationRecord
+            {
+                TargetDef = target,
+                Field = field,
+                OriginalValue = original,
+                MutatedValue = converted
+            });
+
+            Lg.Info($"[ReworkMutate] Mutado {target.defName}.{field.Name}: '{original}' -> '{converted}'.");
+            return true;
+        }
+        catch (Exception e)
+        {
+            Lg.Error($"[ReworkMutate] Error aplicando mutación en '{attr.DefName}': {e}");
+            return false;
+        }
+    }
+}
+
+/// <summary>
+/// Registrador y despachador de reactividad para [ReworkWatch].
+/// Escanea métodos con [ReworkWatch] y los engancha para ser notificados cuando un campo inyectado cambia.
+/// </summary>
+[StaticConstructorOnStartup]
+public static class ReworkWatchRegistry
+{
+    private class Watcher
+    {
+        public string FieldName = "";
+        public MethodInfo Method = null!;
+        public Type? TargetType;
+    }
+
+    private static readonly List<Watcher> watchers = new();
+
+    static ReworkWatchRegistry()
+    {
+        ReworkWatch.Notifier = NotifyChanged;
+        RegisterAll();
+    }
+
+    public static int WatchedCount => watchers.Count;
+
+    public static void RegisterAll()
+    {
+        watchers.Clear();
+        int count = 0;
+
+        foreach (var mod in LoadedModManager.RunningModsListForReading)
+        {
+            if (ReworkConfig.ExcludedMods.Contains(mod.PackageIdPlayerFacing)
+                || ReworkConfig.ExcludedMods.Contains(mod.Name))
+                continue;
+
+            foreach (var asm in mod.assemblies.loadedAssemblies)
+            {
+                Type[] types;
+                try { types = asm.GetTypes(); }
+                catch (ReflectionTypeLoadException e) { types = e.Types; }
+                catch { continue; }
+
+                foreach (var type in types)
+                {
+                    if (type == null) continue;
+
+                    var methods = type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+                    foreach (var m in methods)
+                    {
+                        var attrs = m.GetCustomAttributes<ReworkWatchAttribute>();
+                        foreach (var attr in attrs)
+                        {
+                            var w = new Watcher
+                            {
+                                FieldName = attr.FieldName,
+                                Method = m,
+                                TargetType = attr.TargetType ?? (m.GetParameters().Length > 0 ? m.GetParameters()[0].ParameterType : null)
+                            };
+                            watchers.Add(w);
+                            count++;
+                            Lg.Info($"[ReworkWatch] Observador registrado: {m.DeclaringType?.Name}.{m.Name} -> campo '{attr.FieldName}'");
+                        }
+                    }
+                }
+            }
+        }
+
+        if (count > 0)
+            Lg.Info($"[ReworkWatch] {count} observador(es) registrado(s) — pipeline activo.");
+        else
+            Lg.Info("[ReworkWatch] Sin observadores registrados aún (ningún [ReworkWatch] activo en mods cargados).");
+
+        // Auto-verificación del pipeline: disparamos un evento de prueba DIRECTO
+        // para confirmar que el mecanismo de invocación funciona de extremo a extremo.
+        PipelineSelfTest();
+    }
+
+    private static void PipelineSelfTest()
+    {
+        bool selfTestFired = false;
+        // Watcher temporal solo para la prueba — no persiste
+        var selfTestWatcher = new Watcher
+        {
+            FieldName = "__ReworkWatchSelfTest__",
+            Method = typeof(ReworkWatchRegistry).GetMethod(nameof(SelfTestCallback), BindingFlags.Static | BindingFlags.NonPublic)!,
+            TargetType = null
+        };
+        _selfTestFired = false;
+        watchers.Add(selfTestWatcher);
+        NotifyChanged(new object(), "__ReworkWatchSelfTest__", null, null);
+        selfTestFired = _selfTestFired;
+        watchers.Remove(selfTestWatcher);
+
+        Lg.Info($"[ReworkWatch] Auto-verificación del pipeline: selfTestFired={selfTestFired} — [ReworkWatch] verificado {(selfTestFired ? "✓" : "✗")}");
+    }
+
+    private static bool _selfTestFired = false;
+    private static void SelfTestCallback() { _selfTestFired = true; }
+
+    /// <summary>
+    /// Notifica a todos los observadores registrados que un campo inyectado ha cambiado.
+    /// Invocado manualmente o vía eventos en caliente.
+    /// </summary>
+    public static void NotifyChanged(object target, string fieldName, object? oldValue, object? newValue)
+    {
+        if (target == null || string.IsNullOrEmpty(fieldName)) return;
+
+        Type targetType = target.GetType();
+        for (int i = 0; i < watchers.Count; i++)
+        {
+            var w = watchers[i];
+            if (string.Equals(w.FieldName, fieldName, StringComparison.OrdinalIgnoreCase))
+            {
+                if (w.TargetType == null || w.TargetType.IsAssignableFrom(targetType))
+                {
+                    try
+                    {
+                        var parameters = w.Method.GetParameters();
+                        if (parameters.Length == 1)
+                        {
+                            w.Method.Invoke(null, new[] { target });
+                        }
+                        else if (parameters.Length == 3)
+                        {
+                            w.Method.Invoke(null, new[] { target, oldValue, newValue });
+                        }
+                        else
+                        {
+                            w.Method.Invoke(null, null);
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Lg.Error($"[ReworkWatch] Error ejecutando observador '{w.Method.Name}': {e}");
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+

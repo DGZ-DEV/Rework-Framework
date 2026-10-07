@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Rework (Rework.dll): el Mod de RimWorld, punto de entrada.
+       Equivalente a Prepatcher Source/Implementation (PrepatcherMod.cs). -->
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>10.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Rework</RootNamespace>
+    <AssemblyName>Rework</AssemblyName>
+    <OutputPath>..\..\Assemblies\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Krafs.Rimworld.Ref" Version="1.6.4633" />
+    <!-- Publicize: expone internals de Assembly-CSharp (p.ej. Prefs.data,
+         que Prepatcher usa con Krafs.Publicizer en Implementation.csproj). -->
+    <PackageReference Include="Krafs.Publicizer" Version="2.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Publicize Include="Assembly-CSharp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ReworkCore\ReworkCore.csproj" />
+    <ProjectReference Include="..\ReworkData\ReworkData.csproj" />
+    <ProjectReference Include="..\ReworkAPI\ReworkAPI.csproj" />
+  </ItemGroup>
+
+</Project>
