@@ -77,7 +77,7 @@ Rework Reforjed/
 
 ---
 
-## 🛠️ Compilar desde el código fuente
+## 🛠️ Compilar desde el código fuente (SI VAS A CREAR UN MOD PARA ESTE FRAMEWORK)
 
 Requisitos: [.NET SDK 8.0+](https://dotnet.microsoft.com/download)
 
