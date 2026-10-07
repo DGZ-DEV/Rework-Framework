@@ -77,7 +77,7 @@ Rework Reforjed/
 
 ---
 
-## 🛠️ Building from source
+## 🛠️ Building from source (IF YOU ARE GOING TO CREATE A MOD FOR THIS FRAMEWORK)
 
 Requirements: [.NET SDK 8.0+](https://dotnet.microsoft.com/download)
 
