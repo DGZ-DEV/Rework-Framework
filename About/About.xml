@@ -3,9 +3,10 @@
   <name>Rework Reforjed</name>
   <author>DGZ</author>
   <packageId>dgz.rework</packageId>
-  <description>Framework de parcheo pre-carga para RimWorld (serie Reforjed).
-Reescribe Assembly-CSharp.dll con Mono.Cecil ANTES de que el juego la use, sin Harmony.
-MVP Fase 2: añade el campo int Verse.Pawn.Rework_Test y lo verifica por reflexión al arrancar.</description>
+  <description>Pre-load patching framework for RimWorld (Reforjed series).
+Rewrites Assembly-CSharp.dll in memory using Mono.Cecil before the game loads it — no Harmony, no disk modifications.
+Enables full content creation from C# without XML: recipes, incidents, jobs, needs, quests, traits, genes, and more.
+Target: RimWorld 1.6.4850 rev646.</description>
   <supportedVersions>
     <li>1.6</li>
   </supportedVersions>

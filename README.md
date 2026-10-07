@@ -5,8 +5,8 @@
 <h1 align="center">Rework Reforjed</h1>
 
 <p align="center">
-  <strong>El framework de parcheo pre-carga definitivo para RimWorld que reemplaza por completo a Harmony.</strong><br>
-  Reescribe <code>Assembly-CSharp.dll</code> en memoria utilizando Mono.Cecil antes de que el motor del juego comience su ejecución.
+  <strong>The definitive pre-load patching framework for RimWorld — a complete replacement for Harmony.</strong><br>
+  Rewrites <code>Assembly-CSharp.dll</code> in memory using Mono.Cecil before the game engine starts, without touching any DLL on disk.
 </p>
 
 <p align="center">
@@ -17,48 +17,48 @@
 
 ---
 
-## ⚡ ¿Qué es Rework Reforjed?
+## ⚡ What is Rework Reforjed?
 
-**Rework Reforjed** es una solución de arquitectura e inyección en memoria sin precedentes para RimWorld. A diferencia de las librerías de parcheo dinámico tradicionales (como Harmony) que interceptan métodos mediante trampolines de código máquina en tiempo de ejecución, Rework realiza un **re-escaneo y reescritura de bajo nivel en memoria** durante la fase inicial de carga:
+**Rework Reforjed** is a unique in-memory injection architecture for RimWorld. Unlike traditional dynamic patching libraries (like Harmony) that intercept methods with machine-code trampolines at runtime, Rework performs a **low-level in-memory rewrite** during the initial load phase:
 
-- ❌ **Sin Harmony:** No hay trampolines JIT ni desvíos lentos en runtime.
-- ❌ **Sin modificar archivos en disco:** Tus DLLs originales de RimWorld permanecen completamente intactas.
-- ❌ **Sin XML obligatorio (Zero-XML):** Crea contenido completo (recetas, incidentes, trabajos, necesidades, misiones, etc.) puramente desde código C#.
-- 🚀 **Rendimiento NATIVO:** El código modificado se ejecuta a velocidad de bytecode puro de CLR.
-
----
-
-## 🌟 Características Principales
-
-### 1. Inyección Estructural Real
-- `[ReworkField]`: Añade campos reales a clases del juego (con serialización automática `Scribe` y soporte para inicializadores).
-- `[ReworkMethod]` / `[ReworkProperty]`: Forwarders reales expuestos para el juego y otros mods.
-- `[ReworkWatch]`: Callbacks reactivos automáticos ante la mutación de campos inyectados.
-
-### 2. Guardado y Carga Binaria (`ReworkBinaryScribe`)
-- Guarda y carga partidas en milisegundos mediante un formato binario Deflate compacto (`.rwbin`) con centinela `#REFORJED`.
-- Mantiene sincronización periódica de respaldo XML (`.rws`) para máxima seguridad de tus partidas.
-
-### 3. Suite Completa Zero-XML
-- Crea `ThingDef`, `NeedDef`, `HediffDef`, recetas, incidentes, mutaciones en caliente, misiones (`[ReworkQuest]`), tabs de colonos (`[ReworkTab]`), alertas (`[ReworkAlert]`) y efectos de zona sin tocar un solo archivo XML.
-
-### 4. Rendimiento & Concurrencia
-- `ReworkParallel`: Despacho de simulaciones intensivas a hilos secundarios con entrega segura al hilo principal de RimWorld.
-- `ReworkCache`: Capa de caché con TTL en ticks para optimizar bucles pesados.
-
-### 5. Suite de Diagnóstico Integrada
-- Abre el **Inspector de Runtime** (`Dialog_ReworkInspector`) directamente en el juego: perfilador de memoria, explorador de clases, telemetría de hilos, consola de desarrollo y visor de parches aplicados.
+- ❌ **No Harmony:** No JIT trampolines or slow runtime detours.
+- ❌ **No disk changes:** Your original RimWorld DLLs stay completely untouched.
+- ❌ **No mandatory XML (Zero-XML):** Create full content (recipes, incidents, jobs, needs, quests, etc.) purely from C# code.
+- 🚀 **Native performance:** Modified code runs at pure CLR bytecode speed.
 
 ---
 
-## 📖 Documentación
+## 🌟 Main Features
 
-- Consulta [`MANUAL.md`](MANUAL.md) para la guía completa de la API, ejemplos de uso y especificaciones técnicas.
-- Consulta [`ERRORES.md`](ERRORES.md) para la bitácora de diseño, lecciones aprendidas y arquitectura interna.
+### 1. Real Structural Injection
+- `[ReworkField]`: Adds real fields to game classes (with automatic `Scribe` serialization and initializer support).
+- `[ReworkMethod]` / `[ReworkProperty]`: Real forwarders exposed to the game and other mods.
+- `[ReworkWatch]`: Automatic reactive callbacks when injected fields change.
+
+### 2. Binary Save/Load (`ReworkBinaryScribe`)
+- Saves and loads games in milliseconds using a compact Deflate binary format (`.rwbin`) with `#REFORJED` sentinel.
+- Keeps periodic XML backup sync (`.rws`) for maximum save safety.
+
+### 3. Complete Zero-XML Suite
+- Create `ThingDef`, `NeedDef`, `HediffDef`, recipes, incidents, hot mutations, quests (`[ReworkQuest]`), colonist tabs (`[ReworkTab]`), alerts (`[ReworkAlert]`) and zone effects without a single XML file.
+
+### 4. Performance & Concurrency
+- `ReworkParallel`: Dispatch intensive simulations to worker threads with safe delivery back to the RimWorld main thread.
+- `ReworkCache`: TTL-based cache layer in ticks to optimize heavy loops.
+
+### 5. Integrated Diagnostics Suite
+- Open the **Runtime Inspector** (`Dialog_ReworkInspector`) directly in-game: memory profiler, class explorer, thread telemetry, developer console and applied-patch viewer.
 
 ---
 
-## 📜 Licencia y Créditos
+## 📖 Documentation
 
-Desarrollado por **DGZ** como parte de la serie **Reforjed**.
-Target exclusivo: RimWorld 1.6.4850 rev646.
+- See [`MANUAL.md`](MANUAL.md) for the complete API guide, usage examples and technical specifications.
+- See [`ERRORES.md`](ERRORES.md) for known pitfalls, limitations and what you should NOT use or touch.
+
+---
+
+## 📜 License & Credits
+
+Developed by **DGZ** as part of the **Reforjed** series.
+Exclusive target: RimWorld 1.6.4850 rev646.
