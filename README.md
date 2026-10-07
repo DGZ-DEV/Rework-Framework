@@ -51,23 +51,6 @@
 
 ---
 
-## 🛠️ Compilación desde el Código Fuente
-
-Requisitos: [.NET SDK 8.0+](https://dotnet.microsoft.com/download)
-
-```powershell
-# Clona el repositorio y compila la solución en Release
-dotnet build "Source/Rework.slnx" -c Release
-```
-
-Las librerías compiladas se generarán automáticamente dentro de la carpeta `Assemblies/`:
-- `0ReworkData.dll` (Almacén de datos persistente)
-- `0ReworkAPI.dll` (Superficie pública para modders)
-- `ReworkCore.dll` (Motor de parcheo Mono.Cecil en memoria)
-- `Rework.dll` (Ensamblado del mod para RimWorld)
-
----
-
 ## 📖 Documentación
 
 - Consulta [`MANUAL.md`](MANUAL.md) para la guía completa de la API, ejemplos de uso y especificaciones técnicas.
