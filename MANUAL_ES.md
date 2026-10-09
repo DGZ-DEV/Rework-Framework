@@ -2,8 +2,9 @@
 
 Un framework de parcheo pre-carga para RimWorld: reescribe `Assembly-CSharp.dll` **en
 memoria** con Mono.Cecil **antes** de que el juego la use, así el código parcheado corre como
-bytecode CLR normal. Portable (una carpeta en `Mods/`), autocontenido. Target exclusivo:
-**RimWorld 1.6.4850 rev646**.
+bytecode CLR normal. No usa ni se integra con librerías de intercepción de métodos en runtime
+(trampolines, prefixes/postfixes): no hay nada que combinar con ellas. Portable (una carpeta en
+`Mods/`), autocontenido. Target exclusivo: **RimWorld 1.6.4850 rev646**.
 
 ---
 

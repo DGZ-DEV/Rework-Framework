@@ -6,17 +6,16 @@ Léelo antes de publicar cualquier mod basado en Rework.
 
 ---
 
-## 1. No mezcles Rework con parcheo dinámico en runtime
+## 1. Rework no usa Harmony (ni se integra con él)
 
-Rework reescribe el ensamblado del juego **en memoria, antes de que se cargue**. No mezcles ese
-modelo con librerías que interceptan métodos en runtime (trampolines de código máquina,
-prefixes/postfixes) sobre los mismos métodos: los dos modelos se pisan y el resultado es
-impredecible.
+Rework reescribe el ensamblado del juego **en memoria, antes de que se cargue**; no intercepta
+métodos en runtime. Son dos modelos que actúan en momentos distintos, así que un `[HarmonyPatch]`
+no lo procesa Rework ni se combina con sus parches: no esperes que interoperen.
 
-- Si un mod trae ese tipo de librerías (`0Harmony.dll`, `HarmonySharedState`), Rework las
-  detecta y las trata como ensamblados protegidos de solo-lectura (sin parches, sin
-  procesamiento de atributos) para evitar colisiones de runtime. La coexistencia es pasiva:
-  no esperes que interoperen.
+- Si un mod trae ese tipo de librerías (`0Harmony.dll`, `HarmonySharedState`), Rework las marca
+  como **ensamblados protegidos de solo-lectura** — el mismo trato que `mscorlib` o `UnityEngine`:
+  no los reescribe, no procesa sus atributos y no los recarga. Es una medida **defensiva** para
+  que el juego arranque aunque estén presentes, no una integración.
 
 ## 2. NUNCA toques los DLL del juego en disco
 

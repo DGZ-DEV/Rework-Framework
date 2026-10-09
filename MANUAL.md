@@ -2,8 +2,9 @@
 
 A pre-load patching framework for RimWorld: it re-writes `Assembly-CSharp.dll` **in memory**
 with Mono.Cecil **before** the game uses it, so patched code runs as plain CLR bytecode.
-Portable (one folder in `Mods/`), self-contained. Exclusive target:
-**RimWorld 1.6.4850 rev646**.
+It does not use or integrate with runtime method-interception libraries (trampolines,
+prefixes/postfixes): there is nothing to combine with them. Portable (one folder in `Mods/`),
+self-contained. Exclusive target: **RimWorld 1.6.4850 rev646**.
 
 ---
 
