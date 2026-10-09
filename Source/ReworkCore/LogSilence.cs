@@ -13,7 +13,7 @@ namespace Rework.Core;
 /// handler original).
 ///
 /// NO parchea IL de ningún método del juego: solo envuelve el manejador de logs de
-/// Unity (equivalente al SilenceLogging de Prepatcher, pero sin Harmony y sin tocar
+/// Unity (equivalente al SilenceLogging de Prepatcher, pero sin tocar
 /// métodos del juego). La decisión de suprimir vive en DataStore.ShouldSuppressLog
 /// (0ReworkData, BCL y nunca refonly) para que el filtro funcione a través del reload.
 /// </summary>

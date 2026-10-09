@@ -6,7 +6,7 @@ using UnityEngine.SceneManagement;
 namespace Rework.Core;
 
 /// <summary>
-/// Conecta la recreación de Roots a las transiciones de escena, SIN Harmony.
+/// Conecta la recreación de Roots a las transiciones de escena.
 ///
 /// Cuando Unity carga una escena nueva (Entry→Play, nuevo juego, quicktest...), crea el
 /// GameObject GameRoot con un Root (Root_Entry/Root_Play) del Assembly-CSharp ORIGINAL

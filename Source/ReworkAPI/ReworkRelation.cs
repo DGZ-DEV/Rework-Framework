@@ -53,4 +53,50 @@ public static class ReworkRelation
         }
         return res;
     }
+
+    /// <summary>Serializa todas las relaciones (usado por ReworkPersistence en el .rwbin).</summary>
+    public static byte[] SerializeToBinary()
+    {
+        using var ms = new System.IO.MemoryStream();
+        using var bw = new System.IO.BinaryWriter(ms);
+        bw.Write(relations.Count);
+        foreach (var kvp in relations)
+        {
+            bw.Write(kvp.Key);
+            bw.Write(kvp.Value.Count);
+            for (int i = 0; i < kvp.Value.Count; i++)
+            {
+                bw.Write(kvp.Value[i].TargetPawnId);
+                bw.Write(kvp.Value[i].RelationType);
+            }
+        }
+        return ms.ToArray();
+    }
+
+    /// <summary>Restaura las relaciones desde bytes (usado por ReworkPersistence).</summary>
+    public static void DeserializeFromBinary(byte[] data)
+    {
+        if (data == null || data.Length == 0) return;
+        try
+        {
+            using var ms = new System.IO.MemoryStream(data);
+            using var br = new System.IO.BinaryReader(ms);
+            int count = br.ReadInt32();
+            relations.Clear();
+            for (int i = 0; i < count; i++)
+            {
+                string pawnA = br.ReadString();
+                int relCount = br.ReadInt32();
+                var list = new List<RelationEntry>();
+                for (int j = 0; j < relCount; j++)
+                {
+                    string target = br.ReadString();
+                    string type = br.ReadString();
+                    list.Add(new RelationEntry { TargetPawnId = target, RelationType = type });
+                }
+                relations[pawnA] = list;
+            }
+        }
+        catch { }
+    }
 }

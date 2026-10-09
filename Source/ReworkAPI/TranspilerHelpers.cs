@@ -9,9 +9,8 @@ namespace Rework;
 
 /// <summary>
 /// Helpers de construcción de IL para transpilers amigables ([ReworkPatch]).
-/// Prepatcher/Harmony ofrecen Prefix/Postfix; en Rework (reemplazo TOTAL de Harmony)
-/// el autor escribe un transpiler — estos helpers hacen que los casos comunes se
-/// escriban sin pelear con el IL a mano:
+/// Prepatcher ofrece Prefix/Postfix; en Rework el autor escribe un transpiler —
+/// estos helpers hacen que los casos comunes se escriban sin pelear con el IL:
 ///
 ///   - EmitCallAtStart / EmitCallAtEnd: llamar tu helper C# al inicio/fin del método.
 ///   - Ldc / OpCode sugar: constantes del tipo correcto (Ldc_I4, Ldc_R4, Ldstr, Ldnull...).

@@ -41,6 +41,11 @@ public static class ReworkZoneManager
         return zone;
     }
 
+    /// <summary>Todas las zonas registradas (las consume ZoneRuntime para el tick real).</summary>
+    public static IReadOnlyDictionary<string, ZoneEffectDefinition> RegisteredZones => zones;
+
+    public static int RegisteredCount => zones.Count;
+
     public static void TriggerEffect(string zoneId, object pawn)
     {
         if (zones.TryGetValue(zoneId, out var zone))

@@ -32,18 +32,20 @@ public static class ReworkGizmoRegistry
         public string TargetTypeName = "Pawn";
         public string Label = "";
         public string Description = "";
+        public string? IconPath;
         public MethodInfo Method = null!;
     }
 
     private static readonly List<GizmoEntry> gizmos = new();
 
-    public static void Register(string targetType, string label, string desc, MethodInfo method)
+    public static void Register(string targetType, string label, string desc, MethodInfo method, string? iconPath = null)
     {
         gizmos.Add(new GizmoEntry
         {
             TargetTypeName = targetType,
             Label = label,
             Description = desc,
+            IconPath = iconPath,
             Method = method
         });
     }

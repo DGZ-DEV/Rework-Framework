@@ -6,13 +6,13 @@ before shipping any mod based on Rework.
 
 ---
 
-## 1. NEVER use Harmony
+## 1. Do not mix Rework with runtime dynamic patching
 
-Rework is a **complete replacement for Harmony**. Never use Harmony to patch IL at runtime,
-never use machine-code trampolines, and never wrap game methods with Harmony prefixes or
-postfixes alongside Rework patches.
+Rework rewrites the game assembly **in memory, before it is loaded**. Do not mix that model with
+libraries that intercept methods at runtime (machine-code trampolines, prefixes/postfixes) on the
+same methods: the two models collide and the result is unpredictable.
 
-- If a mod brings Harmony assemblies (`0Harmony.dll`, `HarmonySharedState`), Rework detects
+- If a mod brings that kind of library (`0Harmony.dll`, `HarmonySharedState`), Rework detects
   them and treats them as read-only protected assemblies (no patches, no attribute
   processing) to avoid runtime collisions. Coexistence is passive: do not expect them to
   interoperate.

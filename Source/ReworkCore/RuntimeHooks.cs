@@ -1,7 +1,10 @@
 using System.Collections.Generic;
 using System.Reflection;
+using Rework;
 using Rework.Data;
+using RimWorld;
 using UnityEngine;
+using Verse;
 
 namespace Rework.Core;
 
@@ -201,6 +204,11 @@ public static class RuntimeHooks
                 Lg.Info($"[ReworkBinaryScribe] Save binario generado (.rwbin) con centinela #REFORJED: '{System.IO.Path.GetFileName(binPath)}'.");
             }
 
+            // Integración de persistencia: los almacenes de servicios (ReworkColonySkill,
+            // ReworkPawnTimeline, ReworkWorldStore, ...) se empaquetan en el compañero
+            // .rwdat junto al save (ReworkPersistence.SaveAll).
+            ReworkPersistence.SaveAll(savePath);
+
             // Gestión del XML único de Respaldo de Tiempo:
             // Si el XML de tiempo está activado, registramos el timestamp del XML principal
             var now = System.DateTime.UtcNow;
@@ -247,5 +255,211 @@ public static class RuntimeHooks
             Lg.Error($"[ReworkBinaryScribe] Excepción al cargar binario, activando fallback a XML: {e.Message}");
         }
         return null;
+    }
+
+    // ============================================================================
+    // PUNTOS DE DISPATCH INYECTADOS POR GameProcessing (Fase "enganchar los
+    // fantasmas"): cada método público estático de aquí es el destino de un `call`
+    // que el pipeline inserta en un método del Assembly-CSharp NUEVO. Versionan la
+    // integración de las features declarativas (ReworkScheduler, ReworkBus,
+    // ReworkWatch, zonas, gizmos, inspección, alertas, IA, lore, overlays, ...).
+    // ============================================================================
+
+    private static int lastTick = -1;
+
+    /// <summary>Delegado que ReworkMod conecta al auto-detector de [ReworkWatch] (tick por tick).</summary>
+    public static System.Action? AutoWatchTick;
+
+    /// <summary>Delegado que ReworkMod conecta para avisar de cualquier cambio de estado (reserva).</summary>
+    public static System.Action? OnStateChanged;
+
+    /// <summary>
+    /// Despachador de tick global. Inyectado al INICIO de
+    /// Verse.GameComponentUtility.GameComponentTick() (se llama UNA vez por tick
+    /// de juego). Conecta a vida real:
+    ///   • ReworkScheduler     → [ReworkSchedule]
+    ///   • ReworkBus           → evento ReworkGameTickEvent por tick
+    ///   • ReworkParallel      → FlushMainThreadQueue (callbacks en hilo principal)
+    ///   • ReworkWatch         → auto-detección de cambios en campos observados
+    ///   • StatusEffectRuntime → expiración de [ReworkStatusEffect]
+    ///   • ZoneRuntime         → efectos de zona periódicos
+    /// El trabajo global se ejecuta una sola vez por tick (guard lastTick).
+    /// </summary>
+    public static void OnGameComponentTick()
+    {
+        try
+        {
+            var tick = Find.TickManager?.TicksGame ?? 0;
+
+            if (tick != lastTick)
+            {
+                lastTick = tick;
+                ReworkScheduler.OnGameTick(tick);
+                ReworkBus.Publish(new ReworkGameTickEvent(tick));
+                ReworkParallel.FlushMainThreadQueue();
+                AutoWatchTick?.Invoke();
+                ReworkRuntime.QuestRuntime.OnTick();
+            }
+
+            ReworkRuntime.StatusEffectRuntime.OnTick();
+            ReworkRuntime.ZoneRuntime.OnTick();
+        }
+        catch (System.Exception e)
+        {
+            Lg.Error($"RuntimeHooks.OnGameComponentTick falló: {e}");
+        }
+    }
+
+    /// <summary>
+    /// Añade los gizmos [ReworkGizmo] del target al enumerable de gizmos vanilla.
+    /// Inyectado antes del ret de Verse.Thing.GetGizmos() y Verse.Pawn.GetGizmos()
+    /// (ambos son iteradores: devuelven el estado d__NN; aquí se envuelve con Concat).
+    /// </summary>
+    public static IEnumerable<Verse.Gizmo> AppendReworkGizmos(IEnumerable<Verse.Gizmo> gizmos, object target)
+    {
+        if (gizmos == null) return System.Linq.Enumerable.Empty<Verse.Gizmo>();
+        var extra = ReworkRuntime.GizmoRuntime.CreateFor(target);
+        if (extra == null || extra.Count == 0) return gizmos;
+        return System.Linq.Enumerable.Concat(gizmos, extra);
+    }
+
+    /// <summary>
+    /// Añade las líneas [ReworkInspectString] a la cadena de inspección vanilla.
+    /// Inyectado antes de cada ret de Verse.Thing.GetInspectString() y
+    /// Verse.Pawn.GetInspectString().
+    /// </summary>
+    public static string AppendReworkInspectString(string current, object target)
+    {
+        try
+        {
+            string extra = ReworkInspectStringRegistry.GetAppendedString(target);
+            if (string.IsNullOrEmpty(extra)) return current;
+            if (string.IsNullOrEmpty(current)) return extra;
+            return current + "\n" + extra;
+        }
+        catch
+        {
+            return current;
+        }
+    }
+
+    private static bool reworkAlertsAttached;
+
+    /// <summary>
+    /// Registra las alertas [ReworkAlert] declarativas en el AlertsReadout real.
+    /// Inyectado antes del ret final de RimWorld.AlertsReadout.ctor() — justo después
+    /// de que vanilla construya AllAlerts desde allAlertTypesCached; añadimos las
+    /// nuestras (idempotente: solo una vez por sesión).
+    /// </summary>
+    public static void AttachReworkAlerts(RimWorld.AlertsReadout readout)
+    {
+        if (readout == null || reworkAlertsAttached) return;
+        try
+        {
+            var all = ReworkAlertRegistry.AllAlerts;
+            if (all == null || all.Count == 0) return;
+
+            // Vanilla sondea por reflexión TODAS las subclases de Alert y deja una
+            // instancia inerte de ReworkCustomAlert en AllAlerts (ERRORES.md §39).
+            // La quitamos antes de añadir las instancias reales con su entrada.
+            readout.AllAlerts.RemoveAll(a => a is ReworkRuntime.ReworkCustomAlert rca && rca.IsInert);
+
+            foreach (var entry in all)
+            {
+                readout.AllAlerts.Add(new ReworkRuntime.ReworkCustomAlert(entry));
+            }
+            reworkAlertsAttached = true;
+            Lg.Info($"[ReworkAlert] {all.Count} alerta(s) declarativa(s) conectada(s) al AlertsReadout.");
+        }
+        catch (System.Exception e)
+        {
+            Lg.Error($"[ReworkAlert] No se pudieron conectar las alertas: {e}");
+        }
+    }
+
+    /// <summary>
+    /// Aplica los modificadores de IA [ReworkAIModifier] a la prioridad calculada de
+    /// un ThinkNode. Inyectado antes del ret de Verse.AI.ThinkNode.GetPriority(Pawn):
+    /// si el ret devuelve la prioridad normal (prev = ldfld priority), se ajusta; la
+    /// rama de error (0) no se toca.
+    /// </summary>
+    public static float AdjustThinkPriority(float current, Verse.Pawn pawn, string jobDefName)
+    {
+        try
+        {
+            return ReworkAIRegistry.EvaluateJobPriority(pawn, jobDefName, current);
+        }
+        catch
+        {
+            return current;
+        }
+    }
+
+    /// <summary>Publica un evento de ciclo de vida en el ReworkBus ([ReworkOn]).</summary>
+    public static void PublishLifecycleEvent(string name)
+    {
+        PublishLifecycleEventContext(name, null);
+    }
+
+    /// <summary>Publica un evento de ciclo de vida con contexto en el ReworkBus.</summary>
+    public static void PublishLifecycleEventContext(string name, object? context)
+    {
+        try
+        {
+            ReworkBus.Publish(new ReworkLifecycleEvent(name, context));
+            if (name == "NewGameStarted" || name == "GameInitialized")
+            {
+                ReworkPersistence.ClearAll();
+                ReworkMigration.RunAllMigrations(Current.Game, new System.Collections.Generic.Dictionary<string, object>());
+            }
+        }
+        catch (System.Exception e)
+        {
+            Lg.Error($"RuntimeHooks.PublishLifecycleEvent('{name}') falló: {e}");
+        }
+    }
+
+    /// <summary>
+    /// Reenvía cada HistoryEvent del juego a los generadores de lore [ReworkLore]
+    /// cuya Key coincide con el defName del evento; si generan texto, se muestra
+    /// un Mensaje (flavor narrativo real).
+    /// </summary>
+    public static void OnHistoryEvent(RimWorld.HistoryEvent ev)
+    {
+        try
+        {
+            if (ev.def == null) return;
+            string key = ev.def.defName;
+            string text = ReworkLore.Generate(key, new System.Collections.Generic.Dictionary<string, object>
+            {
+                ["eventDef"] = key
+            });
+            if (!string.IsNullOrEmpty(text))
+            {
+                Messages.Message(text, MessageTypeDefOf.NeutralEvent, historical: true);
+            }
+        }
+        catch (System.Exception e)
+        {
+            Lg.Error($"RuntimeHooks.OnHistoryEvent falló: {e}");
+        }
+    }
+
+    /// <summary>
+    /// Dibuja los overlays [ReworkOverlay] registrados en el pase de GUI del mapa.
+    /// Inyectado al inicio de Verse.MapComponentUtility.MapComponentOnGUI(Map);
+    /// solo dibuja en el evento Repaint (un pase por frame).
+    /// </summary>
+    public static void RenderReworkOverlays(Verse.Map map)
+    {
+        try
+        {
+            if (Event.current != null && Event.current.type != EventType.Repaint) return;
+            if (map == null) return;
+            ReworkOverlay.RenderAll(map);
+        }
+        catch
+        {
+        }
     }
 }

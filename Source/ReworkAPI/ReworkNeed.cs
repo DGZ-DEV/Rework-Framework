@@ -14,9 +14,16 @@ public abstract class ReworkNeedBase
 }
 
 /// <summary>
-/// Registro y despachador de Necesidades declarativas de Rework.
+/// Registro y despachador de Necesidades declarativas de Rework (API pura).
+///
+/// NOTA DE INTEGRACIÓN: el registro RUNTIME real de [ReworkNeed] vive en
+/// ReworkMod (ReworkContentRegistries.ReworkNeedRegistry) y añade los NeedDef
+/// a DefDatabase. Esta clase API solo ofrece un almacén en memoria consultable
+/// por mods que quieran pre-registrar entradas sin tocar el juego; no compite
+/// con el registro runtime (renombrada a ReworkNeedApiRegistry para evitar la
+/// ambigüedad de nombre entre ambos ensamblados; ver auditoría).
 /// </summary>
-public static class ReworkNeedRegistry
+public static class ReworkNeedApiRegistry
 {
     public class NeedEntry
     {

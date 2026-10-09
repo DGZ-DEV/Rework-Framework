@@ -8,7 +8,7 @@ namespace Rework.Core;
 
 /// <summary>
 /// Orquestación del reload. Diseño equivalente a Prepatcher Loader.cs
-/// (misma arquitectura; sin Harmony y sin Prestarter por ahora).
+/// (misma arquitectura; sin Prestarter por ahora).
 ///
 /// FLUJO DE DOS PASADAS (modelo Prepatcher):
 ///   Pasada 1 → Loader.Reload() (este archivo) + Thread.CurrentThread.Abort()

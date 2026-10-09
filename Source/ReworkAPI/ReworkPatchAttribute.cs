@@ -5,7 +5,7 @@ namespace Rework;
 /// <summary>
 /// Marca un "parche libre" ([ReworkPatch], Fase 3): Rework lo invoca DURANTE la
 /// reescritura (pasada 1, en memoria), antes de que el juego use los ensamblados.
-/// Equivalente a FreePatch de Prepatcher, pero SIN Harmony.
+/// Equivalente a FreePatch de Prepatcher, pero en tiempo de reescritura.
 ///
 /// PRIORIDAD (Fase 4): los parches se aplican en orden de Priority DESCENDENTE
 /// (mayor número primero). Default 0. Usa [ReworkPatch(100)] para forzar que un
@@ -19,8 +19,8 @@ namespace Rework;
 ///    Recibe el ModuleDefinition de Assembly-CSharp y lo modifica con Cecil puro.
 ///
 /// 2) Modo TRANSPILER amigable (Fase 4): indica el método destino con Type+Method
-///    y recibe sus instrucciones para devolverlas modificadas (estilo transpiler de
-///    Harmony, pero en tiempo de reescritura y con Cecil). Firma:
+///    y recibe sus instrucciones para devolverlas modificadas (estilo transpiler,
+///    pero en tiempo de reescritura y con Cecil). Firma:
 ///      [ReworkPatch(Type = "Verse.Root_Entry", Method = "Start", Priority = 10)]
 ///      public static IEnumerable<Mono.Cecil.Cil.Instruction> MiTranspilador(
 ///          IEnumerable<Mono.Cecil.Cil.Instruction> instrs, ModuleDefinition module)

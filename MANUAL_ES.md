@@ -1,8 +1,8 @@
 # Rework Reforjed — Manual
 
-Un framework de parcheo para RimWorld que es un **reemplazo TOTAL de Harmony**: nunca usa
-Harmony y reescribe `Assembly-CSharp.dll` **en memoria** con Mono.Cecil **antes** de que el
-juego la use. Portable (una carpeta en `Mods/`), autocontenido. Target exclusivo:
+Un framework de parcheo pre-carga para RimWorld: reescribe `Assembly-CSharp.dll` **en
+memoria** con Mono.Cecil **antes** de que el juego la use, así el código parcheado corre como
+bytecode CLR normal. Portable (una carpeta en `Mods/`), autocontenido. Target exclusivo:
 **RimWorld 1.6.4850 rev646**.
 
 ---
@@ -171,7 +171,7 @@ orden de carga del mod → nombre.
 
 #### Helpers de IL — TranspilerHelpers
 
-Rework no tiene Prefix/Postfix (la mecánica "antes/después" de Harmony, descartada aquí).
+Rework no tiene Prefix/Postfix (la mecánica "antes/después", que esta arquitectura no usa).
 Los helpers cubren los casos comunes sin pelear con el IL a mano: `Ldc`/`Ldstr`/`Ldnull`,
 `Ldarg`/`Starg`, `Call`, `Ldfld`, `Ret`, `ImportMethod`/`ImportType`, `List`/`Prepend`.
 
@@ -630,4 +630,4 @@ Esperado: "0 Errores" (warnings preexistentes inofensivos). La salida va a `..\.
   `[ReworkRaid]`, `[ReworkThought]`, `[ReworkApparel]`, `[ReworkNeed]`, `[ReworkTab]`,
   `[ReworkInspectString]`, `[ReworkDefBuilder]`.
 - Diagnóstico: suite de runtime `Dialog_ReworkInspector`.
-- Compatibilidad: aislamiento pasivo de Harmony y blindaje del entorno nativo.
+- Compatibilidad: aislamiento pasivo de librerías de parcheo en runtime y blindaje del entorno nativo.

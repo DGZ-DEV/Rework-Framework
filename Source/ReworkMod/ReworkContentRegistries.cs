@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using RimWorld;
 using Rework.Core;
@@ -825,6 +826,114 @@ public static class ReworkWatchRegistry
                     }
                 }
             }
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // DISPARADOR AUTOMÁTICO (agregado en la fase de integración): antes no existía
+    // ningún llamador de NotifyChanged; el "watch" solo funcionaba si el mod lo
+    // invocaba a mano. Ahora un tick del framework (RuntimeHooks.AutoWatchTick,
+    // inyectado en GameComponentUtility.GameComponentTick) compara por reflexión el
+    // valor actual de cada campo observado con el último valor cacheado; cuando
+    // cambia, notifica a los observadores y publica ReworkFieldChangedEvent en el bus.
+    // El cacheado es DÉBIL (ConditionalWeakTable): los pawns destruidos se limpian solos.
+    // ---------------------------------------------------------------------------
+    private class RefEq : IEqualityComparer<object>
+    {
+        public new bool Equals(object x, object y) => ReferenceEquals(x, y);
+        public int GetHashCode(object o) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(o);
+    }
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, Dictionary<string, object?>> watchCache = new();
+    private static int lastAutoTick = -1;
+
+    /// <summary>
+    /// Detección automática de cambios (diff por tick). Se llama desde
+    /// RuntimeHooks.OnGameComponentTick una vez por tick de juego.
+    /// </summary>
+    public static void AutoTick()
+    {
+        if (watchers.Count == 0) return;
+        int now = Find.TickManager?.TicksGame ?? 0;
+        if (now == lastAutoTick) return;
+        lastAutoTick = now;
+
+        try
+        {
+            var byType = watchers
+                .Where(w => w.TargetType != null && !string.IsNullOrEmpty(w.FieldName))
+                .GroupBy(w => w.TargetType!);
+
+            foreach (var group in byType)
+            {
+                foreach (var inst in ResolveInstances(group.Key))
+                {
+                    if (inst == null) continue;
+                    if (!watchCache.TryGetValue(inst, out var fields))
+                    {
+                        fields = new Dictionary<string, object?>(StringComparer.Ordinal);
+                        watchCache.Add(inst, fields);
+                    }
+
+                    foreach (var w in group)
+                    {
+                        object? current = ReadField(inst, w.FieldName);
+                        if (fields.TryGetValue(w.FieldName, out var previous))
+                        {
+                            if (!Equals(current, previous))
+                            {
+                                NotifyChanged(inst, w.FieldName, previous, current);
+                                ReworkBus.Publish(new ReworkFieldChangedEvent<object, object>(inst, w.FieldName, previous, current));
+                            }
+                        }
+                        fields[w.FieldName] = current;
+                    }
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            Lg.Error($"[ReworkWatch] AutoTick falló: {e.Message}");
+        }
+    }
+
+    private static IEnumerable<object> ResolveInstances(Type targetType)
+    {
+        try
+        {
+            if (targetType == typeof(Pawn))
+            {
+                var list = new List<object>();
+                if (Find.Maps != null)
+                {
+                    foreach (var map in Find.Maps)
+                    {
+                        if (map?.mapPawns?.AllPawnsSpawned != null)
+                            list.AddRange(map.mapPawns.AllPawnsSpawned);
+                    }
+                }
+                return list;
+            }
+            if (typeof(Map).IsAssignableFrom(targetType))
+            {
+                return Find.Maps != null ? Find.Maps.OfType<object>().ToList() : System.Linq.Enumerable.Empty<object>();
+            }
+        }
+        catch { }
+        return System.Linq.Enumerable.Empty<object>();
+    }
+
+    private static object? ReadField(object inst, string fieldName)
+    {
+        try
+        {
+            return inst.GetType().GetField(fieldName,
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic
+                | System.Reflection.BindingFlags.Instance)?.GetValue(inst);
+        }
+        catch
+        {
+            return null;
         }
     }
 }

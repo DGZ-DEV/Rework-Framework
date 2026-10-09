@@ -4,7 +4,7 @@
   <author>DGZ</author>
   <packageId>dgz.rework</packageId>
   <description>Pre-load patching framework for RimWorld (Reforjed series).
-Rewrites Assembly-CSharp.dll in memory using Mono.Cecil before the game loads it — no Harmony, no disk modifications.
+Rewrites Assembly-CSharp.dll in memory using Mono.Cecil before the game loads it — no disk modifications.
 Enables full content creation from C# without XML: recipes, incidents, jobs, needs, quests, traits, genes, and more.
 Target: RimWorld 1.6.4850 rev646.</description>
   <supportedVersions>

@@ -5,13 +5,13 @@
 <h1 align="center">Rework Reforjed</h1>
 
 <p align="center">
-  <strong>El framework de parcheo pre-carga definitivo para RimWorld — un reemplazo completo de Harmony.</strong><br>
+  <strong>El framework de parcheo pre-carga definitivo para RimWorld — código real, reescrito en memoria antes de que arranque el motor.</strong><br>
   Reescribe <code>Assembly-CSharp.dll</code> en memoria con Mono.Cecil antes de que el motor del juego arranque, sin tocar ningún DLL en disco.
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/RimWorld-1.6.4850_rev646-blue?style=for-the-badge" alt="RimWorld Version"/>
-  <img src="https://img.shields.io/badge/Harmony-0%25_Dependency-success?style=for-the-badge" alt="Zero Harmony"/>
+  <img src="https://img.shields.io/badge/Sin_Trampolines_Runtime-success?style=for-the-badge" alt="Sin trampolines en runtime"/>
   <img src="https://img.shields.io/badge/Mono.Cecil-In_Memory-orange?style=for-the-badge" alt="Mono.Cecil"/>
 </p>
 
@@ -19,9 +19,9 @@
 
 ## ⚡ ¿Qué es Rework Reforjed?
 
-**Rework Reforjed** es una arquitectura única de inyección en memoria para RimWorld. A diferencia de las librerías de parcheo dinámico tradicionales (como Harmony) que interceptan métodos con trampolines de código máquina en runtime, Rework realiza una **reescritura de bajo nivel en memoria** durante la fase inicial de carga:
+**Rework Reforjed** es una arquitectura única de inyección en memoria para RimWorld. En lugar de interceptar métodos en runtime con trampolines de código máquina, Rework realiza una **reescritura de bajo nivel en memoria** durante la fase inicial de carga:
 
-- ❌ **Sin Harmony:** Sin trampolines JIT ni desvíos lentos en runtime.
+- ❌ **Sin desvíos en runtime:** Sin trampolines JIT ni coste de intercepción por llamada.
 - ❌ **Sin cambios en disco:** Tus DLL originales de RimWorld quedan completamente intactos.
 - ❌ **Sin XML obligatorio (Zero-XML):** Crea contenido completo (recetas, incidentes, trabajos, necesidades, misiones, etc.) puramente desde código C#.
 - 🚀 **Rendimiento nativo:** El código modificado corre a velocidad de bytecode puro de CLR.

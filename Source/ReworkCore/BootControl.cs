@@ -3,7 +3,7 @@ using Verse;
 namespace Rework.Core;
 
 /// <summary>
-/// Controla el "reinicio" del juego de la pasada 1 SIN Harmony, usando solo
+/// Controla el "reinicio" del juego de la pasada 1, usando solo
 /// mecanismos vanilla de RimWorld 1.6.
 ///
 /// CONTEXTO (verificado por descompilación en 1.6.4850):

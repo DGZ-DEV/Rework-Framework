@@ -8,7 +8,7 @@ namespace Rework.Core;
 
 /// <summary>
 /// Acceso a las estructuras internas del runtime Mono de Unity.
-/// Rework NO usa Harmony: este es el equivalente a Prepatcher
+/// Este es el equivalente a Prepatcher
 /// Source/Implementation/UnsafeAssembly.cs (mismo diseño, implementación propia).
 ///
 /// MECANISMO DE DUPLICACIÓN (el corazón del reloader):

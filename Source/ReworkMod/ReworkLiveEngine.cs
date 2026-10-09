@@ -61,8 +61,11 @@ public static class ReworkLiveEngine
         watched.Clear();
         foreach (var mod in LoadedModManager.RunningModsListForReading)
         {
-            // No monitorear assemblies del propio framework ni mods excluidos
-            if (mod.PackageIdPlayerFacing == "rework.reforjed" || mod.PackageIdPlayerFacing == "rework.demo")
+            // No monitorear el propio framework (packageId real: dgz.rework).
+            // Antes se comparaba contra "rework.reforjed"/"rework.demo", que no
+            // coinciden con el packageId real → el framework se auto-vigilaba y
+            // podía recargarse a sí mismo en caliente (bug de la fase de auditoría).
+            if (mod.PackageIdPlayerFacing == "dgz.rework")
                 continue;
 
             if (ReworkConfig.ExcludedMods.Contains(mod.PackageIdPlayerFacing) || ReworkConfig.ExcludedMods.Contains(mod.Name))
@@ -73,6 +76,10 @@ public static class ReworkLiveEngine
 
             foreach (var file in Directory.GetFiles(asmDir, "*.dll"))
             {
+                string fname = Path.GetFileName(file);
+                // Cinturón de seguridad: nunca recargar en caliente los ensamblados del framework.
+                if (fname is "0ReworkAPI.dll" or "0ReworkData.dll" or "ReworkCore.dll" or "Rework.dll" or "ReworkData.dll")
+                    continue;
                 try
                 {
                     watched.Add(new WatchedAssembly
@@ -87,6 +94,30 @@ public static class ReworkLiveEngine
         }
 
         Lg.Info($"[ReworkLive] Monitoreando {watched.Count} archivo(s) .dll para hot-reload seguro.");
+    }
+
+    /// <summary>
+    /// Registra un tipo decorado con [ReworkLive] (y que implemente
+    /// IReworkLiveReloadable) para que el motor lo gestione en los ciclos de
+    /// recarga. Antes, el atributo era decorativo: el engine solo escaneaba la
+    /// interfaz; ahora el escáner de atributos conecta ambos.
+    /// </summary>
+    public static void RegisterFromAttribute(Type type)
+    {
+        if (type == null) return;
+        if (typeof(IReworkLiveReloadable).IsAssignableFrom(type) && !type.IsAbstract && !type.IsInterface)
+        {
+            try
+            {
+                var instance = (IReworkLiveReloadable)Activator.CreateInstance(type);
+                RegisterReloadable(instance);
+                Lg.Info($"[ReworkLive] Tipo '[ReworkLive]' {type.FullName} registrado automáticamente.");
+            }
+            catch (Exception e)
+            {
+                Lg.Error($"[ReworkLive] No se pudo registrar {type.FullName} desde [ReworkLive]: {e.Message}");
+            }
+        }
     }
 
     /// <summary>
@@ -126,6 +157,16 @@ public static class ReworkLiveEngine
     public static void PerformSafeReload(WatchedAssembly item)
     {
         Lg.Info($"[ReworkLive] Detectado cambio en '{Path.GetFileName(item.FilePath)}'. Iniciando protocolo de limpieza...");
+
+        // 0. Fase de integración: la API huérfana ReworkDynamicMutate por fin tiene
+        //    llamador — cualquier mutación [ReworkMutate]/dinámica aplicada se
+        //    revierte antes de recargar (estado limpio), y se avisa a los scripts
+        //    [ReworkLive] de que se avecina el reload.
+        try { ReworkDynamicMutate.RevertAll(); }
+        catch (Exception e) { Lg.Error($"[ReworkLive] RevertAll de mutaciones falló: {e}"); }
+
+        try { ReworkLive.TriggerBeforeReload(); }
+        catch (Exception e) { Lg.Error($"[ReworkLive] TriggerBeforeReload falló: {e}"); }
 
         // 1. Notificar a todos los manejadores de estado registrados para limpieza
         foreach (var r in registeredReloadables.ToArray())
@@ -174,6 +215,9 @@ public static class ReworkLiveEngine
                 try { r.OnAfterLiveReload(); }
                 catch (Exception e) { Lg.Error($"[ReworkLive] Error en OnAfterLiveReload: {e}"); }
             }
+
+            try { ReworkLive.TriggerAfterReload(); }
+            catch (Exception e) { Lg.Error($"[ReworkLive] TriggerAfterReload falló: {e}"); }
 
             Lg.Info($"[ReworkLive] Ciclo de hot-reload completado con éxito. Estado limpio.");
         }

@@ -3,6 +3,7 @@ using System.Linq;
 using System.Reflection;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
+using Verse;
 
 namespace Rework.Core;
 
@@ -116,6 +117,355 @@ internal static class GameProcessing
 
         // 10) ReworkBinaryScribe: Inyectar TryLoadBinaryDocument al inicio de Verse.ScribeLoader.InitLoading
         PatchScribeLoaderBinaryLoad(asmCSharp);
+
+        // 11) Despachador de tick global (ReworkScheduler, ReworkBus, ReworkParallel,
+        //     ReworkWatch, status effects, zonas): Verse.GameComponentUtility.GameComponentTick
+        PatchGameComponentTickDispatcher(asmCSharp);
+
+        // 12) Gizmos [ReworkGizmo]: envuelve Thing.GetGizmos() y Pawn.GetGizmos()
+        PatchThingGizmos(asmCSharp);
+
+        // 13) Inspección [ReworkInspectString]: Thing.GetInspectString() y Pawn.GetInspectString()
+        PatchInspectStrings(asmCSharp);
+
+        // 14) Alertas [ReworkAlert]: RimWorld.AlertsReadout.ctor() → attach al AllAlerts
+        PatchAlertsReadoutAttach(asmCSharp);
+
+        // 15) Modificadores de IA [ReworkAIModifier]: Verse.AI.ThinkNode.GetPriority(Pawn)
+        PatchThinkPriorityAIModifiers(asmCSharp);
+
+        // 16) Eventos de ciclo de vida [ReworkOn]/ReworkBus: Game.LoadGame/FinalizeInit/
+        //     InitNewGame/Dispose, GameDataSaveLoader.SaveGame, Map.FinalizeLoading/
+        //     FinalizeInit, Game.set_CurrentMap
+        PatchLifecycleBusEvents(asmCSharp);
+
+        // 17) Lore [ReworkLore]: RimWorld.HistoryEventsManager.RecordEvent
+        PatchHistoryEventLore(asmCSharp);
+
+        // 18) Overlays [ReworkOverlay]: Verse.MapComponentUtility.MapComponentOnGUI(Map)
+        PatchMapComponentOverlay(asmCSharp);
+    }
+
+    /// <summary>
+    /// Inyecta <c>call RuntimeHooks::OnGameComponentTick()</c> al INICIO de
+    /// Verse.GameComponentUtility.GameComponentTick() (se invoca una vez por tick
+    /// de juego) para alimentar el despachador global de Rework.
+    /// </summary>
+    private static void PatchGameComponentTickDispatcher(ModifiableAssembly asmCSharp)
+    {
+        var module = asmCSharp.ModuleDefinition;
+        var method = module.Types
+            .FirstOrDefault(t => t.FullName == "Verse.GameComponentUtility")
+            ?.Methods.FirstOrDefault(m => m.Name == "GameComponentTick" && m.IsStatic);
+        if (method == null || !method.HasBody)
+        {
+            Lg.Error("No se encontró Verse.GameComponentUtility.GameComponentTick para el despachador de tick.");
+            return;
+        }
+
+        var hookRef = module.ImportReference(
+            typeof(RuntimeHooks).GetMethod(nameof(RuntimeHooks.OnGameComponentTick)));
+        var first = method.Body.Instructions[0];
+        if (first.OpCode == OpCodes.Call
+            && first.Operand is MethodReference pmr
+            && pmr.FullName == hookRef.FullName)
+            return;
+
+        var il = method.Body.GetILProcessor();
+        il.InsertBefore(first, il.Create(OpCodes.Call, hookRef));
+        Lg.Info("Parche aplicado: GameComponentUtility.GameComponentTick → RuntimeHooks.OnGameComponentTick (despachador global)");
+        asmCSharp.Modified = true;
+    }
+
+    /// <summary>
+    /// Envuelve el enumerable devuelto por Thing.GetGizmos() y Pawn.GetGizmos() para
+    /// añadir los gizmos [ReworkGizmo]. Ambos métodos son iteradores cuyo cuerpo es
+    /// <c>ldc.i4.s -2; newobj d__; dup; ldarg.0; stfld &lt;&gt;4__this; ret</c>: se
+    /// inyecta antes del único ret <c>ldarg.0; call AppendReworkGizmos(IEnumerable, object)</c>.
+    /// </summary>
+    private static void PatchThingGizmos(ModifiableAssembly asmCSharp)
+    {
+        var module = asmCSharp.ModuleDefinition;
+        var callRef = module.ImportReference(
+            typeof(RuntimeHooks).GetMethod(nameof(RuntimeHooks.AppendReworkGizmos)));
+
+        foreach (var typeName in new[] { "Verse.Thing", "Verse.Pawn" })
+        {
+            var method = module.Types
+                .FirstOrDefault(t => t.FullName == typeName)
+                ?.Methods.FirstOrDefault(m => m.Name == "GetGizmos" && !m.IsStatic);
+            if (method == null || !method.HasBody)
+            {
+                Lg.Error($"[ReworkGizmo] No se encontró {typeName}.GetGizmos.");
+                continue;
+            }
+
+            var ret = method.Body.Instructions.LastOrDefault(i => i.OpCode == OpCodes.Ret);
+            if (ret == null) continue;
+
+            // Idempotencia: ya parcheado si el ret anterior es nuestro call.
+            var prev = ret.Previous;
+            if (prev != null && prev.OpCode == OpCodes.Call
+                && prev.Operand is MethodReference pmr && pmr.FullName == callRef.FullName)
+                continue;
+
+            var il = method.Body.GetILProcessor();
+            il.InsertBefore(ret, il.Create(OpCodes.Ldarg_0));
+            il.InsertBefore(ret, il.Create(OpCodes.Call, callRef));
+            Lg.Info($"[ReworkGizmo] Parche aplicado: {typeName}.GetGizmos → AppendReworkGizmos");
+            asmCSharp.Modified = true;
+        }
+    }
+
+    /// <summary>
+    /// Añade las líneas [ReworkInspectString] antes de cada ret de
+    /// Thing.GetInspectString() y Pawn.GetInspectString():
+    /// en el ret la pila tiene el string resultado;
+    /// <c>ldarg.0; call AppendReworkInspectString(string, object)</c> lo combina.
+    /// </summary>
+    private static void PatchInspectStrings(ModifiableAssembly asmCSharp)
+    {
+        var module = asmCSharp.ModuleDefinition;
+        var callRef = module.ImportReference(
+            typeof(RuntimeHooks).GetMethod(nameof(RuntimeHooks.AppendReworkInspectString)));
+
+        foreach (var typeName in new[] { "Verse.Thing", "Verse.Pawn" })
+        {
+            var method = module.Types
+                .FirstOrDefault(t => t.FullName == typeName)
+                ?.Methods.FirstOrDefault(m => m.Name == "GetInspectString" && !m.IsStatic);
+            if (method == null || !method.HasBody || method.ReturnType.FullName != "System.String")
+            {
+                Lg.Error($"[ReworkInspectString] No se encontró {typeName}.GetInspectString.");
+                continue;
+            }
+
+            var il = method.Body.GetILProcessor();
+            var rets = method.Body.Instructions.Where(i => i.OpCode == OpCodes.Ret).ToList();
+            int patched = 0;
+            foreach (var ret in rets)
+            {
+                var prev = ret.Previous;
+                if (prev != null && prev.OpCode == OpCodes.Call
+                    && prev.Operand is MethodReference pmr && pmr.FullName == callRef.FullName)
+                    continue;
+
+                il.InsertBefore(ret, il.Create(OpCodes.Ldarg_0));
+                il.InsertBefore(ret, il.Create(OpCodes.Call, callRef));
+                patched++;
+            }
+            if (patched > 0)
+            {
+                Lg.Info($"[ReworkInspectString] Parche aplicado: {typeName}.GetInspectString → AppendReworkInspectString ({patched} ret(s))");
+                asmCSharp.Modified = true;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Añade las alertas [ReworkAlert] al AlertsReadout real: inyecta
+    /// <c>ldarg.0; call AttachReworkAlerts(AlertsReadout)</c> antes del ret final del
+    /// ctor (cuando vanilla ya construyó AllAlerts desde allAlertTypesCached).
+    /// </summary>
+    private static void PatchAlertsReadoutAttach(ModifiableAssembly asmCSharp)
+    {
+        var module = asmCSharp.ModuleDefinition;
+        var ctor = module.Types
+            .FirstOrDefault(t => t.FullName == "RimWorld.AlertsReadout")
+            ?.Methods.FirstOrDefault(m => m.IsConstructor && !m.IsStatic);
+        if (ctor == null || !ctor.HasBody)
+        {
+            Lg.Error("[ReworkAlert] No se encontró RimWorld.AlertsReadout.ctor.");
+            return;
+        }
+
+        var hookRef = module.ImportReference(
+            typeof(RuntimeHooks).GetMethod(nameof(RuntimeHooks.AttachReworkAlerts)));
+        var ret = ctor.Body.Instructions.LastOrDefault(i => i.OpCode == OpCodes.Ret);
+        if (ret == null) return;
+
+        var prev = ret.Previous;
+        if (prev != null && prev.OpCode == OpCodes.Call
+            && prev.Operand is MethodReference pmr && pmr.FullName == hookRef.FullName)
+            return;
+
+        var il = ctor.Body.GetILProcessor();
+        il.InsertBefore(ret, il.Create(OpCodes.Ldarg_0));
+        il.InsertBefore(ret, il.Create(OpCodes.Call, hookRef));
+        Lg.Info("[ReworkAlert] Parche aplicado: AlertsReadout.ctor → AttachReworkAlerts");
+        asmCSharp.Modified = true;
+    }
+
+    /// <summary>
+    /// Ajusta la prioridad de los ThinkNodes con los modificadores [ReworkAIModifier]:
+    /// solo en los rets de ThinkNode.GetPriority(Pawn) cuyo previo es ldfld (la rama
+    /// normal); la rama de error (0) no se toca.
+    /// </summary>
+    private static void PatchThinkPriorityAIModifiers(ModifiableAssembly asmCSharp)
+    {
+        var module = asmCSharp.ModuleDefinition;
+        var method = module.Types
+            .FirstOrDefault(t => t.FullName == "Verse.AI.ThinkNode")
+            ?.Methods.FirstOrDefault(m => m.Name == "GetPriority"
+                && m.Parameters.Count == 1
+                && m.Parameters[0].ParameterType.FullName == "Verse.Pawn");
+        if (method == null || !method.HasBody || method.ReturnType.MetadataType != Mono.Cecil.MetadataType.Single)
+        {
+            Lg.Error("[ReworkAIModifier] No se encontró Verse.AI.ThinkNode.GetPriority(Pawn).");
+            return;
+        }
+
+        var hookRef = module.ImportReference(
+            typeof(RuntimeHooks).GetMethod(nameof(RuntimeHooks.AdjustThinkPriority),
+                new[] { typeof(float), typeof(Verse.Pawn), typeof(string) }));
+
+        var il = method.Body.GetILProcessor();
+        int patched = 0;
+        foreach (var ret in method.Body.Instructions.Where(i => i.OpCode == OpCodes.Ret).ToList())
+        {
+            if (ret.Previous == null || ret.Previous.OpCode != OpCodes.Ldfld)
+                continue;
+            if (ret.Previous.Previous != null && ret.Previous.Previous.OpCode == OpCodes.Call
+                && ret.Previous.Previous.Operand is MethodReference pmr && pmr.FullName == hookRef.FullName)
+                continue;
+
+            il.InsertBefore(ret, il.Create(OpCodes.Ldarg_0));
+            il.InsertBefore(ret, il.Create(OpCodes.Ldstr, ""));
+            il.InsertBefore(ret, il.Create(OpCodes.Call, hookRef));
+            patched++;
+        }
+
+        if (patched > 0)
+        {
+            Lg.Info($"[ReworkAIModifier] Parche aplicado: ThinkNode.GetPriority → AdjustThinkPriority ({patched} ret(s))");
+            asmCSharp.Modified = true;
+        }
+    }
+
+    /// <summary>
+    /// Publica los eventos de ciclo de vida en el ReworkBus:
+    ///   Game.LoadGame("GameStart"), Game.FinalizeInit("GameInitialized"),
+    ///   Game.InitNewGame("NewGameStarted"), Game.Dispose("GameEnded"),
+    ///   GameDataSaveLoader.SaveGame("GameSaving"), Map.FinalizeLoading("MapGenerated"),
+    ///   Map.FinalizeInit("MapInitialized"), Game.set_CurrentMap→"CurrentMapChanged"(mapa).
+    /// </summary>
+    private static void PatchLifecycleBusEvents(ModifiableAssembly asmCSharp)
+    {
+        var module = asmCSharp.ModuleDefinition;
+        var plainRef = module.ImportReference(
+            typeof(RuntimeHooks).GetMethod(nameof(RuntimeHooks.PublishLifecycleEvent),
+                new[] { typeof(string) }));
+        var ctxRef = module.ImportReference(
+            typeof(RuntimeHooks).GetMethod(nameof(RuntimeHooks.PublishLifecycleEventContext),
+                new[] { typeof(string), typeof(object) }));
+
+        var targets = new (string type, string method, string name, bool context, int ctxArg)[]
+        {
+            ("Verse.Game", "LoadGame", "GameStart", false, 0),
+            ("Verse.Game", "FinalizeInit", "GameInitialized", false, 0),
+            ("Verse.Game", "InitNewGame", "NewGameStarted", false, 0),
+            ("Verse.Game", "Dispose", "GameEnded", false, 0),
+            ("Verse.GameDataSaveLoader", "SaveGame", "GameSaving", false, 0),
+            ("Verse.Map", "FinalizeLoading", "MapGenerated", true, 0),
+            ("Verse.Map", "FinalizeInit", "MapInitialized", true, 0),
+            ("Verse.Game", "set_CurrentMap", "CurrentMapChanged", true, 1), // contexto = el mapa NUEVO
+        };
+
+        foreach (var (typeName, methodName, evtName, withContext, ctxArg) in targets)
+        {
+            var method = module.Types
+                .FirstOrDefault(t => t.FullName == typeName)
+                ?.Methods.FirstOrDefault(m =>
+                {
+                    if (m.Name != methodName) return false;
+                    if (withContext && m.IsStatic) return false;   // el contexto se toma de 'this'
+                    if (ctxArg == 1 && m.Parameters.Count < 1) return false; // ldarg.1 requiere 1er param
+                    return true;
+                });
+            if (method == null || !method.HasBody)
+            {
+                Lg.Error($"[ReworkBus] No se encontró {typeName}.{methodName} para publicar '{evtName}'.");
+                continue;
+            }
+
+            var first = method.Body.Instructions[0];
+            var wantRef = withContext ? ctxRef : plainRef;
+            if (first.OpCode == OpCodes.Call
+                && first.Operand is MethodReference pmr && pmr.FullName == wantRef.FullName)
+                continue;
+
+            var il = method.Body.GetILProcessor();
+            if (withContext)
+                il.InsertBefore(first, ctxArg == 1 ? il.Create(OpCodes.Ldarg_1) : il.Create(OpCodes.Ldarg_0));
+            il.InsertBefore(first, il.Create(OpCodes.Ldstr, evtName));
+            il.InsertBefore(first, il.Create(OpCodes.Call, wantRef));
+            Lg.Info($"[ReworkBus] Parche aplicado: {typeName}.{methodName} → PublishLifecycleEvent('{evtName}')");
+            asmCSharp.Modified = true;
+        }
+    }
+
+    /// <summary>
+    /// Reenvía los HistoryEvents al lore [ReworkLore]: inyecta
+    /// <c>ldarg.1; call OnHistoryEvent(HistoryEvent)</c> al inicio de
+    /// RimWorld.HistoryEventsManager.RecordEvent(HistoryEvent, bool).
+    /// </summary>
+    private static void PatchHistoryEventLore(ModifiableAssembly asmCSharp)
+    {
+        var module = asmCSharp.ModuleDefinition;
+        var method = module.Types
+            .FirstOrDefault(t => t.FullName == "RimWorld.HistoryEventsManager")
+            ?.Methods.FirstOrDefault(m => m.Name == "RecordEvent" && m.Parameters.Count == 2);
+        if (method == null || !method.HasBody)
+        {
+            Lg.Error("[ReworkLore] No se encontró RimWorld.HistoryEventsManager.RecordEvent.");
+            return;
+        }
+
+        var hookRef = module.ImportReference(
+            typeof(RuntimeHooks).GetMethod(nameof(RuntimeHooks.OnHistoryEvent)));
+        var first = method.Body.Instructions[0];
+        if (first.OpCode == OpCodes.Ldarg_1
+            && first.Next?.OpCode == OpCodes.Call
+            && first.Next.Operand is MethodReference pmr && pmr.FullName == hookRef.FullName)
+            return;
+
+        var il = method.Body.GetILProcessor();
+        il.InsertBefore(first, il.Create(OpCodes.Ldarg_1));
+        il.InsertBefore(first, il.Create(OpCodes.Call, hookRef));
+        Lg.Info("[ReworkLore] Parche aplicado: HistoryEventsManager.RecordEvent → OnHistoryEvent");
+        asmCSharp.Modified = true;
+    }
+
+    /// <summary>
+    /// Dibuja los overlays [ReworkOverlay] por mapa: inyecta
+    /// <c>ldarg.0; call RenderReworkOverlays(Map)</c> al inicio de
+    /// Verse.MapComponentUtility.MapComponentOnGUI(Map).
+    /// </summary>
+    private static void PatchMapComponentOverlay(ModifiableAssembly asmCSharp)
+    {
+        var module = asmCSharp.ModuleDefinition;
+        var method = module.Types
+            .FirstOrDefault(t => t.FullName == "Verse.MapComponentUtility")
+            ?.Methods.FirstOrDefault(m => m.Name == "MapComponentOnGUI" && m.IsStatic);
+        if (method == null || !method.HasBody)
+        {
+            Lg.Error("[ReworkOverlay] No se encontró Verse.MapComponentUtility.MapComponentOnGUI.");
+            return;
+        }
+
+        var hookRef = module.ImportReference(
+            typeof(RuntimeHooks).GetMethod(nameof(RuntimeHooks.RenderReworkOverlays)));
+        var first = method.Body.Instructions[0];
+        if (first.OpCode == OpCodes.Ldarg_0
+            && first.Next?.OpCode == OpCodes.Call
+            && first.Next.Operand is MethodReference pmr && pmr.FullName == hookRef.FullName)
+            return;
+
+        var il = method.Body.GetILProcessor();
+        il.InsertBefore(first, il.Create(OpCodes.Ldarg_0));
+        il.InsertBefore(first, il.Create(OpCodes.Call, hookRef));
+        Lg.Info("[ReworkOverlay] Parche aplicado: MapComponentUtility.MapComponentOnGUI → RenderReworkOverlays");
+        asmCSharp.Modified = true;
     }
 
     /// <summary>

@@ -5,13 +5,13 @@
 <h1 align="center">Rework Reforjed</h1>
 
 <p align="center">
-  <strong>The definitive pre-load patching framework for RimWorld — a complete replacement for Harmony.</strong><br>
+  <strong>The definitive pre-load patching framework for RimWorld — real code, rewritten in memory before the engine starts.</strong><br>
   Rewrites <code>Assembly-CSharp.dll</code> in memory using Mono.Cecil before the game engine starts, without touching any DLL on disk.
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/RimWorld-1.6.4850_rev646-blue?style=for-the-badge" alt="RimWorld Version"/>
-  <img src="https://img.shields.io/badge/Harmony-0%25_Dependency-success?style=for-the-badge" alt="Zero Harmony"/>
+  <img src="https://img.shields.io/badge/No_Runtime_Trampolines-success?style=for-the-badge" alt="No runtime trampolines"/>
   <img src="https://img.shields.io/badge/Mono.Cecil-In_Memory-orange?style=for-the-badge" alt="Mono.Cecil"/>
 </p>
 
@@ -19,9 +19,9 @@
 
 ## ⚡ What is Rework Reforjed?
 
-**Rework Reforjed** is a unique in-memory injection architecture for RimWorld. Unlike traditional dynamic patching libraries (like Harmony) that intercept methods with machine-code trampolines at runtime, Rework performs a **low-level in-memory rewrite** during the initial load phase:
+**Rework Reforjed** is a unique in-memory injection architecture for RimWorld. Instead of intercepting methods at runtime with machine-code trampolines, Rework performs a **low-level in-memory rewrite** during the initial load phase:
 
-- ❌ **No Harmony:** No JIT trampolines or slow runtime detours.
+- ❌ **No runtime detours:** No JIT trampolines and no per-call interception overhead.
 - ❌ **No disk changes:** Your original RimWorld DLLs stay completely untouched.
 - ❌ **No mandatory XML (Zero-XML):** Create full content (recipes, incidents, jobs, needs, quests, etc.) purely from C# code.
 - 🚀 **Native performance:** Modified code runs at pure CLR bytecode speed.
