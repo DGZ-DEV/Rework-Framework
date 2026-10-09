@@ -523,12 +523,35 @@ public static extern ref List<string> Rework_Historial(this Pawn p);
   persistido en el save binario.
 - **Snapshots de estado (`ReworkStateSnapshot`):** captura y análisis de snapshots compactos
   de valores `[ReworkField]`.
-- **Overlays (`ReworkOverlay`):** renderizado directo de capas y semitransparencias sobre el
-  mapa.
+- **Overlays (`ReworkOverlay` + `[ReworkOverlay]`):** renderizado de capas sobre el mapa.
+  Marca un método estático `void MiOverlay(object mapContext)` con `[ReworkOverlay("id",
+  Label = "...", Priority = n)]` y el framework lo invoca en cada frame de dibujo del mapa
+  (recibe el `Verse.Map` como `mapContext`). También puedes registrarlo por código con
+  `ReworkOverlay.Register(id, action)` / `Unregister(id)`. El contador `Overlay=N` del
+  escáner confirma cuántos overlays declarativos se conectaron.
 - **Migraciones (`[ReworkMigration]`):** migración segura de datos/campos entre versiones de
   mods.
 - **Grafo de dependencias (`ReworkDepGraph` / `[ReworkRequires]`):** resolución automática
   del orden de carga entre mods del ecosistema.
+- **Defs acompañantes (`ReworkCompanionDefRegistry`, §54):** al añadir un Def en runtime, el
+  framework genera los Defs implícitos que vanilla crea al cargar XML y que de otro modo faltan
+  (p. ej. `WorkTypeDef` → `PawnColumnDef` `WorkPriority_<defName>` en la pestaña de Trabajo, §41).
+  Llamada: `ReworkCompanionDefRegistry.GenerateFor(def)` tras `DefDatabase<T>.Add(def)`. Es
+  genérico: cualquier tipo de contenido puede registrar su generador con
+  `ReworkCompanionDefRegistry.Register(typeof(TDef), generador)`.
+- **Auto-verificación de contenido (`ReworkContentSelfCheck`, §55):** eleva el chequeo
+  "registrado = 1" a "registrado **y** usable". Comprueba que el Def existe *y* que tiene sus
+  Defs acompañantes / propiedades críticas (columna de trabajo presente, `needClass` asignado,
+  `displayCategory` de gen válida, `tab` de investigación, `giverClass` asignable…). Escribe un
+  informe en `Rework.log`; los fallos de usabilidad se registran como error con el motivo
+  concreto. Habría cazado el §41 solo. Un mod puede añadir sus propias comprobaciones con
+  `ReworkContentSelfCheck.Register(...)`.
+- **Contrato de versión de API (`ReworkApi.VersionAtLeast`, `[ReworkMinVersion]`, §43):**
+  comparación semver (`major.minor.patch`, ignora sufijos `-beta`/`+build`).
+  `ReworkApi.VersionAtLeast("1.2.0")` devuelve si la API cargada cumple el mínimo.
+  `[assembly: ReworkMinVersion("1.2.0")]` (o a nivel de clase/método) declara el requisito y el
+  escáner lo valida al arrancar: si la API es anterior, escribe un error claro indicando la
+  versión requerida y la cargada.
 - **Compatibilidad condicional (`[ReworkCompatWith]` / `ReworkCompat`):** callbacks
   desacoplados según mods activos.
 - **Paralelismo (`ReworkParallel`):** cómputo seguro en segundo plano con retorno al hilo
@@ -630,5 +653,10 @@ Esperado: "0 Errores" (warnings preexistentes inofensivos). La salida va a `..\.
   `[ReworkWorkGiver]`, `[ReworkGene]`, `[ReworkHediff]`, `[ReworkTrait]`, `[ReworkResearch]`,
   `[ReworkRaid]`, `[ReworkThought]`, `[ReworkApparel]`, `[ReworkNeed]`, `[ReworkTab]`,
   `[ReworkInspectString]`, `[ReworkDefBuilder]`.
+- Infraestructura de contenido: `ReworkCompanionDefRegistry` (defs acompañantes / implícitos,
+  §54), `ReworkContentSelfCheck` (registrado **y** usable, §55).
+- Contrato de versión: `ReworkApi.VersionAtLeast`, `[ReworkMinVersion]` (§43).
+- Rendimiento de hooks (§53): early-out sin suscriptores, delegados cacheados, `try/catch` fuera
+  del camino caliente.
 - Diagnóstico: suite de runtime `Dialog_ReworkInspector`.
 - Compatibilidad: aislamiento pasivo de librerías de parcheo en runtime y blindaje del entorno nativo.

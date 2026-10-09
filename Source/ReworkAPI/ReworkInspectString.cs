@@ -25,6 +25,9 @@ public static class ReworkInspectStringRegistry
 {
     private static readonly List<(string targetType, Func<object, string?> handler)> handlers = new();
 
+    /// <summary>Número de manejadores registrados (para early-out en el dispatch).</summary>
+    public static int HandlerCount => handlers.Count;
+
     public static void Register(string targetType, Func<object, string?> handler)
     {
         handlers.Add((targetType, handler));

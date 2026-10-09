@@ -117,6 +117,24 @@ lo hacen por ti). Hacerlo temprano produce Defs vacíos/rotos en silencio.
 `StorytellerTick` se disparan 60 veces por segundo. Mantén el cuerpo baratísimo o usa un
 contador/intervalo, o hundirás el rendimiento.
 
+**El framework ya no añade coste por su cuenta (§53).** Los despachadores de hooks aplican tres
+reglas de bajo riesgo con impacto directo en TPS:
+
+1. **Early-out:** si no hay ningún suscriptor registrado para ese punto (p. ej. ningún
+   `[ReworkSchedule]`, ningún `[ReworkOn]` de tick, ningún efecto activo), el despachador retorna
+   *antes* de entrar en `try/catch` o de alocar el evento. Comprobar `.Count == 0` es O(1).
+2. **Delegados cacheados:** `ReworkBus` y `ReworkScheduler` guardan un `Delegate` compilado
+   (`Action<T>` directo o `Delegate.CreateDelegate`) resuelto en el registro, **no** un `MethodInfo`
+   invocado por reflexión en cada llamada. Se elimina así el `MethodInfo.Invoke` + la allocación de
+   `object[]` por evento.
+3. **`try/catch` fuera del camino caliente:** el dispatcher ya no envuelve el despacho completo.
+   Cada subsistema (`ReworkScheduler`, `ReworkBus`, `ReworkInspectStringRegistry`, …) protege su
+   propia invocación de usuario; el trabajo del framework no puede lanzar y por tanto no necesita
+   protección externa.
+
+Si tu hook es declarativo (`[ReworkHook]`), el `call` se inyecta directo en el método del juego: no
+hay delegado ni `try/catch` tuyo. Mantén igualmente el cuerpo barato.
+
 ## 14. NO asumas que `this` es el contexto del hook
 
 Algunos hooks pasan otro sujeto:
@@ -166,6 +184,62 @@ override — el primer mod en orden de carga es dueño del campo.
 superficie pública para modders. Se cargan antes que ReworkCore y deben mantener sus
 identidades y rutas estables; re-firmar, renombrar o re-empaquetarlos rompe el reload y la
 API cross-mod.
+
+## 20. NO uses `MethodInfo.Invoke` en un camino caliente — cachea el delegado
+
+`MethodInfo.Invoke` resuelve por reflexión y **aloca un `object[]` por llamada**. En un tick que
+dispara 60/s (o por cada pawn/tick) eso es basura de GC y CPU medida en milisegundos acumulados.
+El framework ya lo evita (§53): `ReworkBus.Subscribe<T>`, `ReworkBus.Register` (vía
+`Delegate.CreateDelegate`), `ReworkScheduler.Register` y `ReworkWatchRegistry` guardan un
+`Delegate` compilado resuelto **una vez** en el registro.
+
+Si escribes un registry propio, haz lo mismo:
+
+```csharp
+// Bien: delegado cacheado en el registro
+Action<object> handler = /* ... */;
+// Mal: resolver y invocar en cada tick
+methodInfo.Invoke(null, new object[] { arg });
+```
+
+`Delegate.CreateDelegate` devuelve `null` si la firma no encaja (p. ej. método con parámetros);
+en ese caso el framework cae a `MethodInfo` como respaldo — nunca revienta.
+
+## 21. NO asumas que "registrado" = "usable" (defs acompañantes)
+
+Un Def añadido a `DefDatabase` en runtime **existe**, pero puede no ser *usable*: vanilla crea
+Defs implícitos/acompañantes durante la carga de XML que no se reproducen al añadir un Def a mano.
+El caso canónico es §41: un `WorkTypeDef` visible sin su `PawnColumnDef` aparece en la lógica pero
+**sin casilla en la pestaña de Trabajo** — el jugador no puede verlo ni regularlo.
+
+- **Regla:** tras añadir un Def en runtime, llama a
+  `ReworkCompanionDefRegistry.GenerateFor(def)` (registra el generador con
+  `ReworkCompanionDefGenerator.EnsureRegistered()` al arrancar). El framework genera así el
+  `PawnColumnDef` `WorkPriority_<defName>` y lo inserta en `PawnTableDefOf.Work.columns`.
+- **Verificación:** no te fíes del "registrado = 1". `ReworkContentSelfCheck` (§55) comprueba
+  *registrado **y** usable* y escribe un informe; los fallos de usabilidad salen como error con
+  el motivo concreto.
+- Need/Gene/Research **no** tienen companion defs en vanilla (se descubren por
+  `DefDatabase<T>.AllDefs`): el generador es genérico y extensible por si un tipo futuro los
+  necesita.
+
+## 22. NO asumas que una API declarada se activa sola («fantasmas»)
+
+Que un sistema exista en `0ReworkAPI` (registro, evento, store persistente) **no** significa que
+algo lo dispare. Se auditaron 13 «fantasmas»: features con registro pero **cero llamadores** —
+existían en la API, se serializaban incluso, pero nunca se ejecutaban (el sistema de overlays
+llegó a tener el despacho inyectado en el juego sin existir un atributo que llenara el
+registro: `Count == 0` permanente → early-out → nunca dibujaba).
+
+- **Regla:** cada API necesita un *consumidor real* en el runtime: un hook, un schedule, un
+  init o un punto del pipeline que la invoque. Si añades una, conéctala en el mismo commit.
+- **Chequeo rápido:** busca los llamadores del método de registro en el fuente. Si el único
+  resultado es la definición, es un fantasma.
+- **Verificación en log:** la línea `[ReworkAttributeScanner] Escaneo completo: … Overlay=N`
+  muestra los contadores; un contador en `0` cuando esperabas contenido activo es la señal.
+- Las APIs **utilitarias** diseñadas para que las llamen mods externos (caché, profiler,
+  diálogos, pools de jobs, world store) no son fantasmas: su consumidor es el modder, y están
+  documentadas en el manual.
 
 ---
 

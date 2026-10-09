@@ -517,8 +517,12 @@ public static extern ref List<string> Rework_Historial(this Pawn p);
   binary save.
 - **State snapshots (`ReworkStateSnapshot`):** capture and analyze compact snapshots of
   `[ReworkField]` values.
-- **Overlays (`ReworkOverlay`):** direct rendering of layers and semi-transparencies over the
-  map.
+- **Overlays (`ReworkOverlay` + `[ReworkOverlay]`):** rendering of layers over the map. Mark
+  a static `void MyOverlay(object mapContext)` method with `[ReworkOverlay("id",
+  Label = "...", Priority = n)]` and the framework calls it on every map draw frame (it
+  receives the `Verse.Map` as `mapContext`). You can also register in code with
+  `ReworkOverlay.Register(id, action)` / `Unregister(id)`. The scanner's `Overlay=N` counter
+  confirms how many declarative overlays were connected.
 - **Migrations (`[ReworkMigration]`):** safe data/field migration between mod versions.
 - **Dependency graph (`ReworkDepGraph` / `[ReworkRequires]`):** automatic load-order
   resolution between ecosystem mods.

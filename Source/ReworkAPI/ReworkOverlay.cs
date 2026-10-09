@@ -18,6 +18,9 @@ public static class ReworkOverlay
 
     private static readonly Dictionary<string, OverlayDrawer> drawers = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Número de drawers registrados (para early-out en el dispatch).</summary>
+    public static int Count => drawers.Count;
+
     public static void Register(string id, Action<object> drawAction)
     {
         drawers[id] = new OverlayDrawer { Id = id, DrawAction = drawAction, Enabled = true };
@@ -38,5 +41,29 @@ public static class ReworkOverlay
                 try { d.DrawAction?.Invoke(mapContext); } catch { }
             }
         }
+    }
+}
+
+/// <summary>
+/// Marca un método estático como un overlay visual inyectable en el mapa del juego.
+/// El método debe tener firma <c>void Method(object mapContext)</c> donde <paramref
+/// name="mapContext"/> es el <see cref="Verse.Map"/> actual. Se dibuja cada frame
+/// durante el pase Repaint de <see cref="Verse.MapComponentUtility.MapComponentOnGUI"/>.
+/// </summary>
+[AttributeUsage(AttributeTargets.Method, Inherited = false, AllowMultiple = false)]
+public sealed class ReworkOverlayAttribute : Attribute
+{
+    /// <summary>Id único del overlay (para enable/disable vía <see cref="ReworkOverlay.SetEnabled"/>).</summary>
+    public string Id { get; }
+
+    /// <summary>Nombre legible opcional (para debugging).</summary>
+    public string? Label { get; set; }
+
+    /// <summary>Prioridad de dibujo: mayor = se dibuja encima (por defecto 0).</summary>
+    public int Priority { get; set; } = 0;
+
+    public ReworkOverlayAttribute(string id)
+    {
+        Id = id;
     }
 }

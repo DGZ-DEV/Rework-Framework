@@ -27,9 +27,32 @@ public static class InitRunner
         DataStore.InitRan = true;
 
         // Índice de carga de cada ensamblado = orden del mod en la lista de mods
-        // (desempate a igual prioridad: gana el mod que carga antes).
+        // resuelto por ReworkDepGraph (§16.5). Si un mod declara [ReworkRequires("X")],
+        // X se carga antes; el resto preserva el orden de RunningModsListForReading.
         var loadOrder = new Dictionary<Assembly, int>();
+
+        var allModIds = LoadedModManager.RunningModsListForReading
+            .Select(m => m.PackageIdPlayerFacing ?? m.Name).ToArray();
+        var resolvedModIds = Rework.ReworkDepGraph.ResolveLoadOrder(allModIds);
+
+        // Mapa: packageId → mod (el primero en la lista, para desempatar igualdad).
+        var modById = new Dictionary<string, ModContentPack>(StringComparer.OrdinalIgnoreCase);
+        foreach (var mod in LoadedModManager.RunningModsListForReading)
+        {
+            var id = mod.PackageIdPlayerFacing ?? mod.Name;
+            if (!modById.ContainsKey(id))
+                modById[id] = mod;
+        }
+
         int idx = 0;
+        foreach (var modId in resolvedModIds)
+        {
+            if (modById.TryGetValue(modId, out var mod))
+                foreach (var a in mod.assemblies.loadedAssemblies)
+                    if (!loadOrder.ContainsKey(a))
+                        loadOrder[a] = idx++;
+        }
+        // Seguridad: añadir assemblies de mods no resueltos (no estaban en el grafo).
         foreach (var mod in LoadedModManager.RunningModsListForReading)
             foreach (var a in mod.assemblies.loadedAssemblies)
                 if (!loadOrder.ContainsKey(a))

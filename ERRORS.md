@@ -166,6 +166,24 @@ public surface for modders. They are loaded before ReworkCore and must keep thei
 and paths stable; re-signing, renaming or re-bundling them breaks the reload and the
 cross-mod API.
 
+## 22. Do NOT assume a declared API activates itself ("ghosts")
+
+The fact that a system exists in `0ReworkAPI` (registry, event, persistent store) does **not**
+mean anything ever fires it. 13 "ghosts" were audited: features with registration but **zero
+callers** — they existed in the API, some even serialized, but never ran (the overlay system
+had its dispatch injected into the game while no attribute existed to fill the registry:
+permanent `Count == 0` → early-out → nothing ever drew).
+
+- **Rule:** every API needs a *real consumer* in the runtime: a hook, a schedule, an init or
+  a pipeline point that invokes it. If you add one, wire it up in the same commit.
+- **Quick check:** search the source for callers of the registration method. If the only hit
+  is the definition itself, it is a ghost.
+- **Log verification:** the `[ReworkAttributeScanner] Escaneo completo: … Overlay=N` line
+  shows the counters; a counter stuck at `0` when you expected active content is the signal.
+- **Utility** APIs designed for external mods to call (cache, profiler, dialogs, job pools,
+  world store) are not ghosts: the modder is their consumer, and they are documented in the
+  manual.
+
 ---
 
 ## Verified reference lines (normal, healthy boot)

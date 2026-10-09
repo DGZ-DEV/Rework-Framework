@@ -276,6 +276,9 @@ public static class ReworkRuntime
             }
         }
 
+        /// <summary>¿Hay efectos de estado activos pendientes de expiración?</summary>
+        public static bool HasActive => apps.Count > 0;
+
         /// <summary>Expira los efectos cumplidos (desde el tick dispatcher).</summary>
         public static void OnTick()
         {
@@ -316,6 +319,9 @@ public static class ReworkRuntime
     public static class ZoneRuntime
     {
         private static readonly Dictionary<string, int> lastTick = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>¿Hay zonas de efecto registradas? (para early-out en OnGameComponentTick)</summary>
+        public static bool HasZones => ReworkZoneManager.RegisteredCount > 0;
 
         public static void OnTick()
         {
@@ -375,6 +381,9 @@ public static class ReworkRuntime
     public static class QuestRuntime
     {
         private static readonly Dictionary<string, int> lastCheck = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>¿Hay quests registrados? (para early-out en OnGameComponentTick)</summary>
+        public static bool HasQuests => ReworkQuestRegistry.Count > 0;
 
         public static void OnTick()
         {

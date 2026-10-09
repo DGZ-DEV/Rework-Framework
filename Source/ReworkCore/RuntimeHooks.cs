@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using Rework;
 using Rework.Data;
+using Rework.Threading;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -280,44 +281,67 @@ public static class RuntimeHooks
     ///   • ReworkScheduler     → [ReworkSchedule]
     ///   • ReworkBus           → evento ReworkGameTickEvent por tick
     ///   • ReworkParallel      → FlushMainThreadQueue (callbacks en hilo principal)
+    ///   • ReworkMainThread    → Drain (acciones encoladas por mods via RunOnMain)
     ///   • ReworkWatch         → auto-detección de cambios en campos observados
     ///   • StatusEffectRuntime → expiración de [ReworkStatusEffect]
     ///   • ZoneRuntime         → efectos de zona periódicos
     /// El trabajo global se ejecuta una sola vez por tick (guard lastTick).
+    ///
+    /// §53-audit-hooks: early-out si ningún subsistema registró trabajo para el tick.
+    /// Evita entrar en try/catch, alocar ReworkGameTickEvent y llamar a subsistemas
+    /// vacíos (cada uno ~60 veces/segundo). El try/catch se eliminó del dispatcher:
+    /// cada subsistema ya maneja sus propios errores internamente.
     /// </summary>
     public static void OnGameComponentTick()
     {
-        try
+        // §53-audit-hooks — early-out: si ningún subsistema tiene trabajo, retornar
+        // inmediatamente sin entrar en try/catch ni alocar el evento de tick.
+        if (ReworkScheduler.Count == 0
+            && !ReworkBus.HasSubscribers<ReworkGameTickEvent>()
+            && !ReworkRuntime.QuestRuntime.HasQuests
+            && !ReworkRuntime.StatusEffectRuntime.HasActive
+            && !ReworkRuntime.ZoneRuntime.HasZones)
         {
-            var tick = Find.TickManager?.TicksGame ?? 0;
+            // AutoWatch y parallel son baratos cuando están vacíos (el primero
+            // tiene su propio early-out en watchers.Count == 0; el segundo hace
+            // TryDequeue que falla inmediatamente si la cola está vacía).
+            AutoWatchTick?.Invoke();
+            ReworkParallel.FlushMainThreadQueue();
+            ReworkMainThread.Drain();
+            return;
+        }
 
-            if (tick != lastTick)
-            {
-                lastTick = tick;
-                ReworkScheduler.OnGameTick(tick);
+        var tick = Find.TickManager?.TicksGame ?? 0;
+
+        if (tick != lastTick)
+        {
+            lastTick = tick;
+            ReworkScheduler.OnGameTick(tick);
+            // Solo alocar el evento si hay suscriptores (evita GC cada tick)
+            if (ReworkBus.HasSubscribers<ReworkGameTickEvent>())
                 ReworkBus.Publish(new ReworkGameTickEvent(tick));
-                ReworkParallel.FlushMainThreadQueue();
-                AutoWatchTick?.Invoke();
-                ReworkRuntime.QuestRuntime.OnTick();
-            }
+            ReworkParallel.FlushMainThreadQueue();
+            ReworkMainThread.Drain();
+            AutoWatchTick?.Invoke();
+            ReworkRuntime.QuestRuntime.OnTick();
+        }
 
-            ReworkRuntime.StatusEffectRuntime.OnTick();
-            ReworkRuntime.ZoneRuntime.OnTick();
-        }
-        catch (System.Exception e)
-        {
-            Lg.Error($"RuntimeHooks.OnGameComponentTick falló: {e}");
-        }
+        ReworkRuntime.StatusEffectRuntime.OnTick();
+        ReworkRuntime.ZoneRuntime.OnTick();
     }
 
     /// <summary>
     /// Añade los gizmos [ReworkGizmo] del target al enumerable de gizmos vanilla.
     /// Inyectado antes del ret de Verse.Thing.GetGizmos() y Verse.Pawn.GetGizmos()
     /// (ambos son iteradores: devuelven el estado d__NN; aquí se envuelve con Concat).
+    ///
+    /// §53-audit-hooks: early-out si no hay gizmos registrados (evita crear listas
+    /// y caminar la jerarquía de tipos en cada selección).
     /// </summary>
     public static IEnumerable<Verse.Gizmo> AppendReworkGizmos(IEnumerable<Verse.Gizmo> gizmos, object target)
     {
         if (gizmos == null) return System.Linq.Enumerable.Empty<Verse.Gizmo>();
+        if (ReworkGizmoRegistry.Count == 0) return gizmos;
         var extra = ReworkRuntime.GizmoRuntime.CreateFor(target);
         if (extra == null || extra.Count == 0) return gizmos;
         return System.Linq.Enumerable.Concat(gizmos, extra);
@@ -327,20 +351,18 @@ public static class RuntimeHooks
     /// Añade las líneas [ReworkInspectString] a la cadena de inspección vanilla.
     /// Inyectado antes de cada ret de Verse.Thing.GetInspectString() y
     /// Verse.Pawn.GetInspectString().
+    ///
+    /// §53-audit-hooks: early-out si no hay manejadores registrados; el try/catch
+    /// se eliminó del dispatcher porque GetAppendedString ya maneja errores por
+    /// manejador individual.
     /// </summary>
     public static string AppendReworkInspectString(string current, object target)
     {
-        try
-        {
-            string extra = ReworkInspectStringRegistry.GetAppendedString(target);
-            if (string.IsNullOrEmpty(extra)) return current;
-            if (string.IsNullOrEmpty(current)) return extra;
-            return current + "\n" + extra;
-        }
-        catch
-        {
-            return current;
-        }
+        if (ReworkInspectStringRegistry.HandlerCount == 0) return current;
+        string extra = ReworkInspectStringRegistry.GetAppendedString(target);
+        if (string.IsNullOrEmpty(extra)) return current;
+        if (string.IsNullOrEmpty(current)) return extra;
+        return current + "\n" + extra;
     }
 
     private static bool reworkAlertsAttached;
@@ -382,17 +404,15 @@ public static class RuntimeHooks
     /// un ThinkNode. Inyectado antes del ret de Verse.AI.ThinkNode.GetPriority(Pawn):
     /// si el ret devuelve la prioridad normal (prev = ldfld priority), se ajusta; la
     /// rama de error (0) no se toca.
+    ///
+    /// §53-audit-hooks: early-out si no hay modificadores registrados; el try/catch
+    /// se eliminó del dispatcher porque EvaluateJobPriority ya maneja errores por
+    /// modificador individual.
     /// </summary>
     public static float AdjustThinkPriority(float current, Verse.Pawn pawn, string jobDefName)
     {
-        try
-        {
-            return ReworkAIRegistry.EvaluateJobPriority(pawn, jobDefName, current);
-        }
-        catch
-        {
-            return current;
-        }
+        if (ReworkAIRegistry.ModifierCount == 0) return current;
+        return ReworkAIRegistry.EvaluateJobPriority(pawn, jobDefName, current);
     }
 
     /// <summary>Publica un evento de ciclo de vida en el ReworkBus ([ReworkOn]).</summary>
@@ -423,25 +443,23 @@ public static class RuntimeHooks
     /// Reenvía cada HistoryEvent del juego a los generadores de lore [ReworkLore]
     /// cuya Key coincide con el defName del evento; si generan texto, se muestra
     /// un Mensaje (flavor narrativo real).
+    ///
+    /// §53-audit-hooks: early-out si no hay generadores registrados; el try/catch
+    /// se eliminó del dispatcher porque ReworkLore.Generate ya maneja errores
+    /// internamente.
     /// </summary>
     public static void OnHistoryEvent(RimWorld.HistoryEvent ev)
     {
-        try
+        if (ReworkLore.GeneratorCount == 0 || ev.def == null) return;
+        string key = ev.def.defName;
+        if (!ReworkLore.HasGenerator(key)) return;
+        string text = ReworkLore.Generate(key, new System.Collections.Generic.Dictionary<string, object>
         {
-            if (ev.def == null) return;
-            string key = ev.def.defName;
-            string text = ReworkLore.Generate(key, new System.Collections.Generic.Dictionary<string, object>
-            {
-                ["eventDef"] = key
-            });
-            if (!string.IsNullOrEmpty(text))
-            {
-                Messages.Message(text, MessageTypeDefOf.NeutralEvent, historical: true);
-            }
-        }
-        catch (System.Exception e)
+            ["eventDef"] = key
+        });
+        if (!string.IsNullOrEmpty(text))
         {
-            Lg.Error($"RuntimeHooks.OnHistoryEvent falló: {e}");
+            Messages.Message(text, MessageTypeDefOf.NeutralEvent, historical: true);
         }
     }
 
@@ -449,17 +467,15 @@ public static class RuntimeHooks
     /// Dibuja los overlays [ReworkOverlay] registrados en el pase de GUI del mapa.
     /// Inyectado al inicio de Verse.MapComponentUtility.MapComponentOnGUI(Map);
     /// solo dibuja en el evento Repaint (un pase por frame).
+    ///
+    /// §53-audit-hooks: early-out si no hay drawers; el try/catch se eliminó porque
+    /// RenderAll ya maneja errores por drawer individual.
     /// </summary>
     public static void RenderReworkOverlays(Verse.Map map)
     {
-        try
-        {
-            if (Event.current != null && Event.current.type != EventType.Repaint) return;
-            if (map == null) return;
-            ReworkOverlay.RenderAll(map);
-        }
-        catch
-        {
-        }
+        if (ReworkOverlay.Count == 0) return;
+        if (Event.current != null && Event.current.type != EventType.Repaint) return;
+        if (map == null) return;
+        ReworkOverlay.RenderAll(map);
     }
 }

@@ -38,6 +38,9 @@ public static class ReworkGizmoRegistry
 
     private static readonly List<GizmoEntry> gizmos = new();
 
+    /// <summary>Número de gizmos registrados (para early-out en el dispatch).</summary>
+    public static int Count => gizmos.Count;
+
     public static void Register(string targetType, string label, string desc, MethodInfo method, string? iconPath = null)
     {
         gizmos.Add(new GizmoEntry

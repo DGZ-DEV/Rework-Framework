@@ -61,6 +61,74 @@ public static class ReworkApi
     {
         return IsPresent ? withRework() : fallback;
     }
+
+    /// <summary>
+    /// Compara versiones semver (major.minor[.patch[.revision]]).
+    /// Devuelve negativo si 'a' &lt; 'b', cero si son iguales, positivo si 'a' &gt; 'b'.
+    /// </summary>
+    private static int CompareVersions(string a, string b)
+    {
+        return ParseVersion(a).CompareTo(ParseVersion(b));
+    }
+
+    /// <summary>
+    /// Analiza una cadena de versión (p. ej. "1.2.0" o "1.2.0-beta+build")
+    /// en un System.Version, ignorando sufijos pre-release y metadata.
+    /// </summary>
+    private static Version ParseVersion(string raw)
+    {
+        string clean = raw ?? "0.0.0";
+        // Strip semver suffixes (pre-release, build metadata)
+        int dash = clean.IndexOf('-');
+        if (dash >= 0) clean = clean.Substring(0, dash);
+        int plus = clean.IndexOf('+');
+        if (plus >= 0) clean = clean.Substring(0, plus);
+        clean = clean.Trim();
+        // Ensure major.minor format
+        var parts = clean.Split('.');
+        if (parts.Length < 2) clean += ".0";
+        return new Version(clean);
+    }
+
+    /// <summary>
+    /// ¿La API cargada es igual o superior a la versión mínima requerida?
+    /// Usa comparación semver. Devuelve false si la API no está presente.
+    /// </summary>
+    /// <example>
+    /// if (ReworkApi.VersionAtLeast("1.2.0")) { /* característica disponible */ }
+    /// </example>
+    public static bool VersionAtLeast(string minVersion)
+    {
+        if (!IsPresent) return false;
+        try { return CompareVersions(Version, minVersion) >= 0; }
+        catch { return string.Compare(Version, minVersion, StringComparison.Ordinal) >= 0; }
+    }
+}
+
+/// <summary>
+/// Declara la versión mínima de la API de Rework (§43-version-contract) que un
+/// ensamblado, clase o método requiere. Se valida en el escáner de atributos:
+/// si la API cargada es anterior a la versión requerida, se muestra un error
+/// claro indicando qué versión se necesita y cuál está cargada.
+///
+/// Uso (nivel de ensamblado):
+///   [assembly: ReworkMinVersion("1.2.0")]
+///
+/// Uso (nivel de clase):
+///   [ReworkMinVersion("1.3.0")]
+///   public class MiFeature { ... }
+/// </summary>
+[AttributeUsage(AttributeTargets.Assembly | AttributeTargets.Class | AttributeTargets.Method,
+                Inherited = false, AllowMultiple = false)]
+public sealed class ReworkMinVersionAttribute : Attribute
+{
+    /// <summary>Versión mínima requerida (semver: major.minor.patch).</summary>
+    public string MinVersion { get; }
+
+    public ReworkMinVersionAttribute(string minVersion)
+    {
+        MinVersion = minVersion;
+    }
 }
 
 /// <summary>Manifiesto de la API (16.1): estado de cada puerta del framework, para que un

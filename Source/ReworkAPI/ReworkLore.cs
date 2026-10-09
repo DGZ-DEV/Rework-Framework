@@ -24,6 +24,12 @@ public static class ReworkLore
 {
     private static readonly Dictionary<string, Func<Dictionary<string, object>, string>> loreGenerators = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Número de generadores de lore registrados (para early-out).</summary>
+    public static int GeneratorCount => loreGenerators.Count;
+
+    /// <summary>¿Hay un generador registrado para esta clave?</summary>
+    public static bool HasGenerator(string key) => !string.IsNullOrEmpty(key) && loreGenerators.ContainsKey(key);
+
     public static void RegisterGenerator(string key, Func<Dictionary<string, object>, string> generator)
     {
         loreGenerators[key] = generator;

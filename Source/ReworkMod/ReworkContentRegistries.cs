@@ -107,6 +107,7 @@ public static class ReworkRecipeRegistry
 
             DefDatabase<RecipeDef>.Add(recipeDef);
             registered[attr.DefName] = recipeDef;
+            ReworkContentSelfCheck.RegisterDef(attr.DefName, "RecipeDef", true);
             Lg.Info($"[ReworkRecipe] Registrada RecipeDef '{attr.DefName}' -> {workerType.Name}.");
             return true;
         }
@@ -377,6 +378,7 @@ public static class ReworkNeedRegistry
 
             DefDatabase<NeedDef>.Add(needDef);
             registered[attr.DefName] = needDef;
+            ReworkContentSelfCheck.RegisterDef(attr.DefName, "NeedDef", true);
             Lg.Info($"[ReworkNeed] Registrado NeedDef '{attr.DefName}' -> {needType.Name}.");
             return true;
         }
@@ -699,8 +701,17 @@ public static class ReworkWatchRegistry
     private class Watcher
     {
         public string FieldName = "";
-        public MethodInfo Method = null!;
         public Type? TargetType;
+
+        // §53-audit-hooks: cachear delegado compilado en vez de MethodInfo.Invoke.
+        // El invoker unifica las 3 firmas posibles (0, 1, 3 parámetros) en
+        // Action<object, object?, object?> para evitar GetParameters() + Invoke
+        // por reflexión en cada notificación.
+        public Action<object, object?, object?>? Invoker;
+
+        // Respaldo solo si la creación del delegado falló (caso raro).
+        public MethodInfo? FallbackMethod;
+        public int ParamCount;
     }
 
     private static readonly List<Watcher> watchers = new();
@@ -741,12 +752,16 @@ public static class ReworkWatchRegistry
                         var attrs = m.GetCustomAttributes<ReworkWatchAttribute>();
                         foreach (var attr in attrs)
                         {
+                            var pars = m.GetParameters();
                             var w = new Watcher
                             {
                                 FieldName = attr.FieldName,
-                                Method = m,
-                                TargetType = attr.TargetType ?? (m.GetParameters().Length > 0 ? m.GetParameters()[0].ParameterType : null)
+                                TargetType = attr.TargetType ?? (pars.Length > 0 ? pars[0].ParameterType : null),
+                                ParamCount = pars.Length,
                             };
+                            // §53-audit-hooks: cachear delegado compilado en vez de MethodInfo.Invoke
+                            w.Invoker = TryCreateInvoker(m, pars.Length);
+                            if (w.Invoker == null) w.FallbackMethod = m;
                             watchers.Add(w);
                             count++;
                             Lg.Info($"[ReworkWatch] Observador registrado: {m.DeclaringType?.Name}.{m.Name} -> campo '{attr.FieldName}'");
@@ -770,12 +785,15 @@ public static class ReworkWatchRegistry
     {
         bool selfTestFired = false;
         // Watcher temporal solo para la prueba — no persiste
+        var selfTestMethod = typeof(ReworkWatchRegistry).GetMethod(nameof(SelfTestCallback), BindingFlags.Static | BindingFlags.NonPublic)!;
         var selfTestWatcher = new Watcher
         {
             FieldName = "__ReworkWatchSelfTest__",
-            Method = typeof(ReworkWatchRegistry).GetMethod(nameof(SelfTestCallback), BindingFlags.Static | BindingFlags.NonPublic)!,
-            TargetType = null
+            TargetType = null,
+            ParamCount = selfTestMethod.GetParameters().Length,
         };
+        selfTestWatcher.Invoker = TryCreateInvoker(selfTestMethod, selfTestWatcher.ParamCount);
+        if (selfTestWatcher.Invoker == null) selfTestWatcher.FallbackMethod = selfTestMethod;
         _selfTestFired = false;
         watchers.Add(selfTestWatcher);
         NotifyChanged(new object(), "__ReworkWatchSelfTest__", null, null);
@@ -806,31 +824,98 @@ public static class ReworkWatchRegistry
                 {
                     try
                     {
-                        var parameters = w.Method.GetParameters();
-                        if (parameters.Length == 1)
+                        // §53-audit-hooks: usar delegado cacheado en vez de MethodInfo.Invoke
+                        if (w.Invoker != null)
                         {
-                            w.Method.Invoke(null, new[] { target });
+                            w.Invoker(target, oldValue, newValue);
                         }
-                        else if (parameters.Length == 3)
+                        else if (w.FallbackMethod != null)
                         {
-                            w.Method.Invoke(null, new[] { target, oldValue, newValue });
-                        }
-                        else
-                        {
-                            w.Method.Invoke(null, null);
+                            if (w.ParamCount == 1)
+                                w.FallbackMethod.Invoke(null, new[] { target });
+                            else if (w.ParamCount == 3)
+                                w.FallbackMethod.Invoke(null, new[] { target, oldValue, newValue });
+                            else
+                                w.FallbackMethod.Invoke(null, null);
                         }
                     }
                     catch (Exception e)
                     {
-                        Lg.Error($"[ReworkWatch] Error ejecutando observador '{w.Method.Name}': {e}");
+                        Lg.Error($"[ReworkWatch] Error ejecutando observador: {e}");
                     }
                 }
             }
         }
     }
 
+    // §53-audit-hooks: cachear delegados compilados para [ReworkWatch] en vez de
+    // MethodInfo.Invoke + GetParameters() en cada notificación.
+    // Estas helpers crean un Action<object, object?, object?> unificado que adapta
+    // las 3 firmas posibles (0/1/3 params) del método observado.
+
+    private static Action<object, object?, object?>? TryCreateInvoker(MethodInfo method, int paramCount)
+    {
+        try
+        {
+            if (paramCount == 0)
+            {
+                var del = Delegate.CreateDelegate(typeof(Action), method) as Action;
+                return del != null ? (Action<object, object?, object?>)((t, o, n) => del()) : null;
+            }
+            if (paramCount == 1)
+            {
+                var paramType = method.GetParameters()[0].ParameterType;
+                var del = Delegate.CreateDelegate(typeof(Action<>).MakeGenericType(paramType), method);
+                if (del == null) return null;
+                return Wrap1(paramType, del);
+            }
+            if (paramCount == 3)
+            {
+                var pars = method.GetParameters();
+                var p1 = pars[0].ParameterType;
+                var p2 = pars[1].ParameterType;
+                var p3 = pars[2].ParameterType;
+                var del = Delegate.CreateDelegate(typeof(Action<,,>).MakeGenericType(p1, p2, p3), method);
+                if (del == null) return null;
+                return Wrap3(p1, p2, p3, del);
+            }
+        }
+        catch
+        {
+            return null;
+        }
+        return null;
+    }
+
+    private static Action<object, object?, object?> Wrap1(Type paramType, Delegate del)
+    {
+        var helper = typeof(ReworkWatchRegistry)
+            .GetMethod(nameof(Wrap1), BindingFlags.Static | BindingFlags.NonPublic)!
+            .MakeGenericMethod(paramType);
+        return (Action<object, object?, object?>)helper.Invoke(null, new object[] { del })!;
+    }
+
+    private static Action<object, object?, object?> Wrap3(Type p1, Type p2, Type p3, Delegate del)
+    {
+        var helper = typeof(ReworkWatchRegistry)
+            .GetMethod(nameof(Wrap3), BindingFlags.Static | BindingFlags.NonPublic)!
+            .MakeGenericMethod(p1, p2, p3);
+        return (Action<object, object?, object?>)helper.Invoke(null, new object[] { del })!;
+    }
+
+    private static Action<object, object?, object?> Wrap1<T>(Delegate del)
+    {
+        var action = (Action<T>)del;
+        return (t, o, n) => action((T)t);
+    }
+
+    private static Action<object, object?, object?> Wrap3<T1, T2, T3>(Delegate del)
+    {
+        var action = (Action<T1, T2, T3>)del;
+        return (t, o, n) => action((T1)t, (T2)o, (T3)n);
+    }
+
     // ---------------------------------------------------------------------------
-    // DISPARADOR AUTOMÁTICO (agregado en la fase de integración): antes no existía
     // ningún llamador de NotifyChanged; el "watch" solo funcionaba si el mod lo
     // invocaba a mano. Ahora un tick del framework (RuntimeHooks.AutoWatchTick,
     // inyectado en GameComponentUtility.GameComponentTick) compara por reflexión el

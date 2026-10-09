@@ -96,6 +96,7 @@ public static class ReworkGeneRegistry
 
             DefDatabase<GeneDef>.Add(geneDef);
             registered[attr.DefName] = geneDef;
+            ReworkContentSelfCheck.RegisterDef(attr.DefName, "GeneDef", true);
             Log.Message($"[ReworkGene] Registrado GeneDef '{attr.DefName}' -> {geneType.Name} (cat={category.defName}).");
             return true;
         }
@@ -201,6 +202,7 @@ public static class ReworkResearchRegistry
 
             DefDatabase<ResearchProjectDef>.Add(project);
             registered[attr.DefName] = project;
+            ReworkContentSelfCheck.RegisterDef(attr.DefName, "ResearchProjectDef", true);
             Log.Message($"[ReworkResearch] Registrado ResearchProjectDef '{attr.DefName}' (cost={attr.BaseCost}, tab={tab.defName}).");
             return true;
         }
@@ -307,6 +309,7 @@ public static class ReworkRaidRegistry
 
             DefDatabase<RaidStrategyDef>.Add(raidDef);
             registered[attr.DefName] = raidDef;
+            ReworkContentSelfCheck.RegisterDef(attr.DefName, "RaidStrategyDef", true);
             Log.Message($"[ReworkRaid] Registrado RaidStrategyDef '{attr.DefName}' -> {workerType.Name} (minPawns={attr.MinPawns}).");
             return true;
         }
@@ -406,6 +409,7 @@ public static class ReworkThoughtRegistry
 
             DefDatabase<ThoughtDef>.Add(thoughtDef);
             registered[attr.DefName] = thoughtDef;
+            ReworkContentSelfCheck.RegisterDef(attr.DefName, "ThoughtDef", true);
             Log.Message($"[ReworkThought] Registrado ThoughtDef '{attr.DefName}' (mood={attr.BaseMoodEffect}, class={thoughtType.Name}).");
             return true;
         }
@@ -516,6 +520,7 @@ public static class ReworkApparelRegistry
 
             DefDatabase<ThingDef>.Add(thingDef);
             registered[attr.DefName] = thingDef;
+            ReworkContentSelfCheck.RegisterDef(attr.DefName, "ThingDef(Apparel)", true);
             Log.Message($"[ReworkApparel] Registrado ThingDef '{attr.DefName}' -> {apparelType.Name} (capa={layer.defName}).");
             return true;
         }

@@ -61,28 +61,45 @@ public sealed class ReworkLifecycleEvent : ReworkEventBase
 
 /// <summary>
 /// Bus de eventos reactivo puro (Publish / Subscribe push) para RimWorld.
-/// Elimina la necesidad de parchar métodos repetitivamente o hacer polling en Tick.
+/// Elimina la necesidad de parchar métodos repetidamente o hacer polling en Tick.
+///
+/// OPTIMIZACIÓN DE RENDEIMIENTO (§53-audit-hooks): los suscriptores se almacenan como
+/// delegados compilados (Delegate.CreateDelegate / Action&lt;T&gt; directo) en vez de
+/// MethodInfo, de modo que Publish<T> invoca el delegado directamente en lugar de
+/// MethodInfo.Invoke (reflexión) en cada llamada. Esto elimina el coste de
+/// MethodInfo.Invoke + la allocación de object[] por evento publicado.
 /// </summary>
 public static class ReworkBus
 {
     private class Subscription
     {
-        public MethodInfo Method = null!;
+        /// <summary>Delegado compilado (Action&lt;T&gt;) que reemplaza a MethodInfo.Invoke.
+        /// Se resuelve UNA vez en Subscribe/&lt;T&gt; o Register, no en cada Publish.</summary>
+        public Delegate? Handler;
+
+        /// <summary>MethodInfo de respaldo (solo si Delegate.CreateDelegate falló).</summary>
+        public MethodInfo? FallbackMethod;
         public object? Target;
+
         public int Priority;
     }
 
     private static readonly ConcurrentDictionary<Type, List<Subscription>> subscriptions = new();
+    private static int totalSubscriptions = 0;
+
+    /// <summary>Número total de suscripciones activas (para early-out rápido).</summary>
+    public static int SubscriptionCount => totalSubscriptions;
 
     /// <summary>
     /// Suscribe una acción fuertemente tipada.
+    /// El delegado se almacena directamente — sin MethodInfo.Invoke en el camino caliente.
     /// </summary>
     public static void Subscribe<T>(Action<T> handler, int priority = 0) where T : IReworkEvent
     {
         if (handler == null) return;
         var sub = new Subscription
         {
-            Method = handler.Method,
+            Handler = handler,
             Target = handler.Target,
             Priority = priority
         };
@@ -91,6 +108,8 @@ public static class ReworkBus
 
     /// <summary>
     /// Registra automáticamente todos los métodos decorados con [ReworkOn] en un objeto o clase estática.
+    /// Los métodos se convierten a delegados compilados (Delegate.CreateDelegate) en vez de
+    /// almacenar MethodInfo e invocar por reflación en cada Publish.
     /// </summary>
     public static void Register(object targetOrType)
     {
@@ -118,10 +137,33 @@ public static class ReworkBus
                 {
                     var sub = new Subscription
                     {
-                        Method = method,
                         Target = instance,
                         Priority = attr.Priority
                     };
+
+                    // Cachear delegado compilado en vez de MethodInfo (§53-audit-hooks).
+                    // Intentamos crear Action<evtType>; si falla (firma incompatible),
+                    // caemos al MethodInfo de respaldo.
+                    try
+                    {
+                        var actionType = typeof(Action<>).MakeGenericType(evtType);
+                        var del = method.IsStatic
+                            ? Delegate.CreateDelegate(actionType, method)
+                            : Delegate.CreateDelegate(actionType, instance, method);
+                        if (del != null)
+                        {
+                            sub.Handler = del;
+                        }
+                        else
+                        {
+                            sub.FallbackMethod = method;
+                        }
+                    }
+                    catch
+                    {
+                        sub.FallbackMethod = method;
+                    }
+
                     AddSubscription(evtType, sub);
                 }
             }
@@ -141,14 +183,24 @@ public static class ReworkBus
                 }
                 return list;
             });
+        // Contador simple para early-out en Publish (evita TryGetValue + ToArray si no hay nada)
+        System.Threading.Interlocked.Increment(ref totalSubscriptions);
     }
 
     /// <summary>
+    /// ¿Hay suscriptores para el tipo de evento T? Usado para early-out antes de
+    /// alocar el evento o entrar en try/catch (§53-audit-hooks).
+    /// </summary>
+    public static bool HasSubscribers<T>() where T : IReworkEvent
+        => subscriptions.TryGetValue(typeof(T), out var list) && list.Count > 0;
+
+    /// <summary>
     /// Publica un evento a todos los suscriptores registrados.
+    /// Invoca delegados compilados directamente (sin MethodInfo.Invoke en el hot path).
     /// </summary>
     public static void Publish<T>(T evt) where T : IReworkEvent
     {
-        if (evt == null) return;
+        if (evt == null || totalSubscriptions == 0) return;
         Type evtType = evt.GetType();
 
         if (subscriptions.TryGetValue(evtType, out var list))
@@ -158,16 +210,30 @@ public static class ReworkBus
 
             foreach (var sub in snapshot)
             {
-                try
+                if (sub.Handler is Action<T> typed)
                 {
-                    sub.Method.Invoke(sub.Target, new object[] { evt });
+                    // Camino rápido: delegado fuertemente tipado, sin boxing ni reflexión
+                    try { typed(evt); }
+                    catch
+                    {
+#if DEBUG
+                        Console.WriteLine($"[ReworkBus] Error al procesar evento {evtType.Name} en {typed.Method.Name}");
+#endif
+                    }
                 }
-                catch (Exception e)
+                else if (sub.FallbackMethod != null)
                 {
-                    // Manejo seguro en API pura sin acoplamiento
-                    #if DEBUG
-                    Console.WriteLine($"[ReworkBus] Error al procesar evento {evtType.Name} en {sub.Method.Name}: {e.InnerException ?? e}");
-                    #endif
+                    // Respaldo: MethodInfo.Invoke (solo si CreateDelegate falló en registro)
+                    try
+                    {
+                        sub.FallbackMethod.Invoke(sub.Target, new object[] { evt });
+                    }
+                    catch
+                    {
+#if DEBUG
+                        Console.WriteLine($"[ReworkBus] Error al procesar evento {evtType.Name} en {sub.FallbackMethod.Name}");
+#endif
+                    }
                 }
             }
         }
@@ -179,5 +245,6 @@ public static class ReworkBus
     public static void Clear()
     {
         subscriptions.Clear();
+        System.Threading.Interlocked.Exchange(ref totalSubscriptions, 0);
     }
 }

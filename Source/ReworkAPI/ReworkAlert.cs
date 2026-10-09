@@ -38,6 +38,9 @@ public static class ReworkAlertRegistry
 
     private static readonly List<AlertEntry> alerts = new();
 
+    /// <summary>Número de alertas registradas (para early-out en el dispatch).</summary>
+    public static int Count => alerts.Count;
+
     public static void Register(string name, string label, string explanation, int priority, MethodInfo condition)
     {
         alerts.Add(new AlertEntry

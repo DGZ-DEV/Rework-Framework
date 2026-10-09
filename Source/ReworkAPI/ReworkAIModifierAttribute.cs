@@ -35,6 +35,9 @@ public static class ReworkAIRegistry
 
     private static readonly List<(string? jobDef, int priority, AIModifierDelegate handler)> modifiers = new();
 
+    /// <summary>Número de modificadores IA registrados (para early-out en el dispatch).</summary>
+    public static int ModifierCount => modifiers.Count;
+
     public static void RegisterModifier(string? jobDef, int priority, AIModifierDelegate handler)
     {
         modifiers.Add((jobDef, priority, handler));

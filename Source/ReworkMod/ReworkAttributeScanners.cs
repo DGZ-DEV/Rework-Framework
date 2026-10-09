@@ -25,6 +25,7 @@ namespace Rework;
 ///   [ReworkLive]        → ReworkLiveEngine          (despacho: hot-reload)
 ///   [ReworkLore]        → ReworkLore                (despacho: HistoryEventsManager.RecordEvent)
 ///   [ReworkMigration]   → ReworkMigration           (despacho: inicio de partida)
+///   [ReworkOverlay]     → ReworkOverlay.Register      (despacho: RuntimeHooks.RenderReworkOverlays)
 ///   [ReworkOn]          → ReworkBus.Register        (despacho: publicador en RuntimeHooks)
 ///   [ReworkQuest]       → ReworkQuestRegistry       (despacho: QuestRuntime por tick)
 ///   [ReworkRequires]    → ReworkDepGraph + validación (despacho: al escanear)
@@ -51,7 +52,8 @@ public static class ReworkAttributeScanner
     {
         int aiCount = 0, gizmoCount = 0, inspectCount = 0, alertCount = 0, tabCount = 0,
             scheduleCount = 0, migrationCount = 0, compatCount = 0, defBuilderCount = 0,
-            questCount = 0, loreCount = 0, statusCount = 0, onCount = 0, liveCount = 0;
+            questCount = 0, loreCount = 0, statusCount = 0, onCount = 0, liveCount = 0,
+            overlayCount = 0;
 
         try
         {
@@ -197,6 +199,30 @@ public static class ReworkAttributeScanner
                                 ReworkLore.RegisterGenerator(lore.Key, AdaptLore(method));
                                 loreCount++;
                             }
+
+                            var overlay = method.GetCustomAttribute<ReworkOverlayAttribute>();
+                            if (overlay != null)
+                            {
+                                try
+                                {
+                                    var pars = method.GetParameters();
+                                    if (pars.Length != 1 || pars[0].ParameterType != typeof(object))
+                                    {
+                                        Lg.Error($"[ReworkOverlay] '{method.DeclaringType?.FullName}.{method.Name}': requiere firma void Method(object mapContext).");
+                                    }
+                                    else
+                                    {
+                                        var action = (Action<object>)Delegate.CreateDelegate(
+                                            typeof(Action<object>), method);
+                                        ReworkOverlay.Register(overlay.Id, action);
+                                        overlayCount++;
+                                    }
+                                }
+                                catch (Exception e)
+                                {
+                                    Lg.Error($"[ReworkOverlay] Error registrando '{method.DeclaringType?.FullName}.{method.Name}': {e.Message}");
+                                }
+                            }
                         }
                     }
                 }
@@ -225,7 +251,7 @@ public static class ReworkAttributeScanner
         Lg.Info($"[ReworkAttributeScanner] Escaneo completo: AI={aiCount} Gizmo={gizmoCount} Inspect={inspectCount} " +
                 $"Alert={alertCount} Tab={tabCount} Schedule={scheduleCount} Migration={migrationCount} " +
                 $"Compat={compatCount} DefBuilder={defBuilderCount} Quest={questCount} Lore={loreCount} " +
-                $"StatusEffect={statusCount} Bus([ReworkOn])={onCount} Live=[{liveCount}]");
+                $"StatusEffect={statusCount} Bus([ReworkOn])={onCount} Live=[{liveCount}] Overlay={overlayCount}");
     }
 
     private static void WireDelegates()
@@ -238,7 +264,7 @@ public static class ReworkAttributeScanner
     }
 
     // ---------------------------------------------------------------------------
-    // Requisitos [ReworkRequires] (assembly-level)
+    // Requisitos [ReworkRequires] y [ReworkMinVersion] (assembly-level)
     // ---------------------------------------------------------------------------
     private static void ScanAssemblyRequirements(Assembly asm, string asmName)
     {
@@ -261,6 +287,22 @@ public static class ReworkAttributeScanner
                     {
                         Lg.Verbose($"[ReworkRequires] '{asmName}' → '{requiredId}' presente ✓.");
                     }
+                }
+            }
+
+            // §43-version-contract: validar [ReworkMinVersion] (assembly-level)
+            var minVer = asm.GetCustomAttribute<ReworkMinVersionAttribute>();
+            if (minVer != null)
+            {
+                if (!ReworkApi.VersionAtLeast(minVer.MinVersion))
+                {
+                    Lg.Error($"[ReworkMinVersion] El ensamblado '{asmName}' requiere API v{minVer.MinVersion} " +
+                             $"pero la versión cargada es v{ReworkApi.Version}. Actualice Rework Reforjed " +
+                             $"para usar esta característica.");
+                }
+                else
+                {
+                    Lg.Verbose($"[ReworkMinVersion] '{asmName}' → requiere v{minVer.MinVersion}, API v{ReworkApi.Version} OK ✓.");
                 }
             }
         }

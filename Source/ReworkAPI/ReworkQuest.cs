@@ -41,5 +41,8 @@ public static class ReworkQuestRegistry
         registeredQuests[defName] = questType;
     }
 
+    /// <summary>Número de quests registrados (para early-out en el dispatch).</summary>
+    public static int Count => registeredQuests.Count;
+
     public static IReadOnlyDictionary<string, Type> AllQuests => registeredQuests;
 }

@@ -21,11 +21,15 @@ namespace Rework;
 public static class ReworkWorkGiverRegistry
 {
     private static readonly Dictionary<string, WorkGiverDef> registeredGivers = new();
+    private static readonly Dictionary<string, WorkTypeDef> registeredWorkTypes = new();
 
     static ReworkWorkGiverRegistry()
     {
         RegisterAll();
     }
+
+    /// <summary>WorkTypeDefs creados por Rework (para auto-verificación §55).</summary>
+    public static IReadOnlyDictionary<string, WorkTypeDef> RegisteredWorkTypes => registeredWorkTypes;
 
     /// <summary>Devuelve el WorkGiverDef registrado por su defName, o null si no existe.</summary>
     public static WorkGiverDef? Get(string defName)
@@ -38,6 +42,10 @@ public static class ReworkWorkGiverRegistry
     /// <summary>Escanea todos los ensamblados activos y registra los WorkGiverDefs declarados con [ReworkWorkGiver].</summary>
     public static void RegisterAll()
     {
+        // §54-companion-defs: asegurar que los generadores de defs acompañantes
+        // están registrados antes de crear cualquier WorkTypeDef.
+        ReworkCompanionDefGenerator.EnsureRegistered();
+
         int count = 0;
         var affectedWorkTypes = new HashSet<WorkTypeDef>();
 
@@ -129,6 +137,7 @@ public static class ReworkWorkGiverRegistry
 
             DefDatabase<WorkGiverDef>.Add(giverDef);
             registeredGivers[attr.DefName] = giverDef;
+            ReworkContentSelfCheck.RegisterDef(attr.DefName, "WorkGiverDef", true);
 
             // Enlazar en la lista de prioridades de su WorkTypeDef
             if (workTypeDef.workGiversByPriority == null)
@@ -188,6 +197,8 @@ public static class ReworkWorkGiverRegistry
             };
 
             DefDatabase<WorkTypeDef>.Add(def);
+            registeredWorkTypes[def.defName] = def;
+            ReworkContentSelfCheck.RegisterDef(def.defName, "WorkTypeDef", true);
 
             // Reindexar para que las búsquedas por defName lo encuentren
             // (mismo patrón que el DefBuilder de ReworkAttributeScanner).
@@ -198,84 +209,14 @@ public static class ReworkWorkGiverRegistry
             Lg.Info($"[ReworkWorkGiver] WorkTypeDef '{def.defName}' creado desde el atributo " +
                     $"(label='{label}', verb='{def.verb}', tags={def.workTags}, prio={def.naturalPriority}).");
 
-            // Sin esto el tipo de trabajo existe pero NO tiene casilla en la pestaña de Trabajo.
-            EnsureWorkTabColumn(def);
+            // §54-companion-defs: generar la PawnColumnDef acompañante de forma genérica.
+            ReworkCompanionDefRegistry.GenerateFor(def);
             return def;
         }
         catch (Exception e)
         {
             Lg.Error($"[ReworkWorkGiver] No se pudo crear el WorkTypeDef '{attr.WorkType}': {e.Message}. Se usa Hauling.");
             return WorkTypeDefOf.Hauling;
-        }
-    }
-
-    /// <summary>
-    /// Crea la columna de la pestaña de Trabajo para un WorkTypeDef recién creado.
-    ///
-    /// La pestaña de Trabajo NO se construye a partir de los WorkTypeDef: vanilla genera, al
-    /// cargar los Defs (RimWorld.PawnColumnDefGenerator.ImpliedPawnColumnDefs — es decir,
-    /// ANTES de cualquier [StaticConstructorOnStartup]), un PawnColumnDef
-    /// "WorkPriority_&lt;defName&gt;" por cada WorkTypeDef con visible=true, y lo inserta en
-    /// PawnTableDefOf.Work.columns justo antes de la columna de copiar/pegar prioridades.
-    /// Un WorkTypeDef creado DESPUÉS de esa fase se queda sin casilla en la pestaña
-    /// (ERRORES.md §41): existe y los colonos lo usan, pero el jugador no puede verlo ni
-    /// regularlo. Aquí replicamos esa generación para nuestro tipo de trabajo.
-    /// </summary>
-    private static void EnsureWorkTabColumn(WorkTypeDef def)
-    {
-        try
-        {
-            var workTable = PawnTableDefOf.Work;
-            if (workTable == null)
-            {
-                Lg.Error("[ReworkWorkGiver] PawnTableDefOf.Work no disponible; el tipo de trabajo no tendrá columna.");
-                return;
-            }
-
-            string columnDefName = "WorkPriority_" + def.defName;
-
-            var column = DefDatabase<PawnColumnDef>.GetNamedSilentFail(columnDefName);
-            bool isNew = column == null;
-            if (isNew)
-            {
-                column = new PawnColumnDef
-                {
-                    defName = columnDefName,
-                    workType = def,
-                    workerClass = typeof(PawnColumnWorker_WorkPriority),
-                    sortable = true
-                };
-            }
-
-            if (workTable.columns == null)
-                workTable.columns = new List<PawnColumnDef>();
-
-            // Escalonado de etiquetas de vanilla: alterna por columna de trabajo.
-            column.moveWorkTypeLabelDown = workTable.columns.Count(c => c != null && c.workType != null) % 2 == 1;
-
-            if (isNew)
-            {
-                DefDatabase<PawnColumnDef>.Add(column);
-                typeof(DefDatabase<PawnColumnDef>)
-                    .GetMethod("SetIndices", BindingFlags.Public | BindingFlags.Static)
-                    ?.Invoke(null, null);
-            }
-
-            if (!workTable.columns.Contains(column))
-            {
-                // Vanilla inserta las columnas de trabajo justo antes de "copiar/pegar prioridades".
-                int idx = workTable.columns.FindIndex(c =>
-                    c != null && c.Worker is PawnColumnWorker_CopyPasteWorkPriorities);
-                if (idx < 0) idx = workTable.columns.Count;
-                workTable.columns.Insert(idx, column);
-            }
-
-            Lg.Info($"[ReworkWorkGiver] Columna '{columnDefName}' añadida a la pestaña de Trabajo " +
-                    $"(PawnTableDefOf.Work.columns, índice {workTable.columns.IndexOf(column)}).");
-        }
-        catch (Exception e)
-        {
-            Lg.Error($"[ReworkWorkGiver] No se pudo crear la columna de Trabajo para '{def.defName}': {e}");
         }
     }
 
