@@ -192,4 +192,6 @@ Estos salen de la bitácora real del proyecto ([ERRORES.md](ERRORES.md)):
   pestañas de inspección, migraciones, hot-reload, transpilers Cecil, serialización binaria…
 - **Reglas duras:** [ERRORES.md](ERRORES.md) — lo que nunca debes hacer y por qué.
 - **Regresión de arranque:** `Tools/BootRegression.ps1` — verifica el boot sano desde el log.
-- **Ejemplo grande:** el mod demo `Rework Demo Reforjed` usa (casi) todo junto.
+- **Ejemplo grande:** el propio framework consume su API — mira
+  `Source/ReworkMod/ReworkILSelfDemo.cs` (auto-demo con impacto cero en el juego) y los
+  schedulers/hooks de `ReworkRuntimeActivators.cs`.

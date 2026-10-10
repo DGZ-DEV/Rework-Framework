@@ -193,4 +193,6 @@ These come from the project's real incident log ([ERRORS.md](ERRORS.md)):
   migrations, hot-reload, Cecil transpilers, binary serialization…
 - **Hard rules:** [ERRORS.md](ERRORS.md) — what you must never do, and why.
 - **Boot regression:** `Tools/BootRegression.ps1` — verifies a healthy boot from the log.
-- **Full example:** the `Rework Demo Reforjed` mod uses (almost) everything together.
+- **Full example:** the framework exercises its own API — see
+  `Source/ReworkMod/ReworkILSelfDemo.cs` (a self-demo with zero gameplay impact) and
+  the `ReworkRuntimeActivators.cs` schedulers/hooks.

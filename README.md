@@ -1,12 +1,13 @@
 <p align="center">
-  <img src="About/Preview.png" alt="Rework Reforjed Logo" width="350"/>
+  <img src="About/Preview.png" alt="Rework Reforjed" width="350"/>
 </p>
 
 <h1 align="center">Rework Reforjed</h1>
 
 <p align="center">
-  <strong>The definitive pre-load patching framework for RimWorld — real code, rewritten in memory before the engine starts.</strong><br>
-  Rewrites <code>Assembly-CSharp.dll</code> in memory using Mono.Cecil before the game engine starts, without touching any DLL on disk.
+  In-memory patching framework for RimWorld 1.6. It rewrites <code>Assembly-CSharp.dll</code>
+  with Mono.Cecil before the game loads, so mods can add real fields, methods and content
+  to existing classes without touching a single file on disk.
 </p>
 
 <p align="center">
@@ -17,86 +18,81 @@
 
 ---
 
-## ⚡ What is Rework Reforjed?
+## What it does
 
-**Rework Reforjed** is a unique in-memory injection architecture for RimWorld. Instead of intercepting methods at runtime with machine-code trampolines, Rework performs a **low-level in-memory rewrite** during the initial load phase:
+RimWorld mods usually work either through XML defs or by intercepting method calls at
+runtime (Harmony detours). Rework takes a different route: during the initial load, it
+rewrites the game assembly in memory and restarts the boot sequence with the rewritten
+version. Patched code is then just code — no trampolines, no per-call interception
+overhead, and the game's DLLs on disk never change.
 
-- ❌ **No runtime detours:** No JIT trampolines and no per-call interception overhead.
-- ❌ **No disk changes:** Your original RimWorld DLLs stay completely untouched.
-- ❌ **No mandatory XML (Zero-XML):** Create full content (recipes, incidents, jobs, needs, quests, etc.) purely from C# code.
-- 🚀 **Native performance:** Modified code runs at pure CLR bytecode speed.
+Mods built against Rework declare what they want with plain C# attributes:
 
----
+- **Structural injection:** `[ReworkField]` (real fields on game classes, with optional
+  save/load and initializers), `[ReworkMethod]` / `[ReworkProperty]`, `[ReworkAnnotate]`.
+- **Behavior:** `[ReworkHook]` (22 lifecycle points), `[ReworkSchedule]`,
+  `ReworkBus` & `[ReworkOn]` (event bus), `[ReworkPatch]` (direct Mono.Cecil patches and
+  friendly transpilers).
+- **IL surgery:** `[ReworkRedirect]` (rewrite every call site of a game method to your
+  code), `[ReworkOverride]` (real virtual overrides on game classes), `[ReworkUnlock]`
+  (make private/sealed/non-virtual members public/unsealed/virtual), `[ReworkInline]`
+  (inline trivial getters at the call sites), `[ReworkConst]` (fold `static readonly`
+  reads into literals).
+- **Content without XML:** jobs, work givers, incidents, recipes, needs, traits, genes,
+  research, raids, thoughts, apparel, quests, alerts, gizmos, inspect tabs, overlays,
+  UI panels, zone effects, map generation steps.
+- **Saves:** `ReworkBinaryScribe` — compressed binary saves (`.rwbin`) with a periodic
+  XML backup, plus automatic persistence for the framework's service stores (`.rwdat`).
+- **Tools:** `ReworkParallel` (worker threads with safe main-thread delivery),
+  `ReworkCache`, hot-reload of external mod DLLs, and a runtime inspector with a dev
+  console (`Dialog_ReworkInspector`).
 
-## 📥 Installation
+## Installation
 
 1. Copy the `Rework Reforjed` folder into `RimWorld\Mods\`.
-2. Enable it in the RimWorld **Mods** menu.
-3. **Load order:** drag `Rework Reforjed` **to the very top**, right below `Core`/expansions.
-4. First launch restarts the loading in place automatically — the game process never closes.
+2. Enable it in the Mods menu and place it at the **top of the load order**, right
+   below Core / expansions.
+3. The first launch restarts the loading in place; that is normal and happens once.
 
-Uninstall: just disable the mod in the Mods menu. Your game DLLs were never touched.
+Uninstalling is just deleting the mod folder. The game's DLLs were never touched.
 
----
-
-## 🌟 Main Features
-
-### 1. Real Structural Injection
-- `[ReworkField]`: Adds real fields to game classes (with automatic `Scribe` serialization and initializer support).
-- `[ReworkMethod]` / `[ReworkProperty]`: Real forwarders exposed to the game and other mods.
-- `[ReworkWatch]`: Automatic reactive callbacks when injected fields change.
-
-### 2. Binary Save/Load (`ReworkBinaryScribe`)
-- Saves and loads games in milliseconds using a compact Deflate binary format (`.rwbin`) with `#REFORJED` sentinel.
-- Keeps periodic XML backup sync (`.rws`) for maximum save safety.
-
-### 3. Complete Zero-XML Suite
-- Create `ThingDef`, `NeedDef`, `HediffDef`, recipes, incidents, hot mutations, quests (`[ReworkQuest]`), colonist tabs (`[ReworkTab]`), alerts (`[ReworkAlert]`) and zone effects without a single XML file.
-
-### 4. Performance & Concurrency
-- `ReworkParallel`: Dispatch intensive simulations to worker threads with safe delivery back to the RimWorld main thread.
-- `ReworkCache`: TTL-based cache layer in ticks to optimize heavy loops.
-
-### 5. Integrated Diagnostics Suite
-- Open the **Runtime Inspector** (`Dialog_ReworkInspector`) directly in-game: memory profiler, class explorer, thread telemetry, developer console and applied-patch viewer.
-
----
-
-## 🗂️ Repository layout
+## Repository layout
 
 ```
 Rework Reforjed/
-├── About/                    Mod metadata (About.xml, preview image)
-├── Assemblies/               Ready-to-play compiled DLLs
-│   ├── 0ReworkData.dll       Persistent data store (survives the in-place reload)
-│   ├── 0ReworkAPI.dll        Public API surface for external modders
-│   ├── ReworkCore.dll        Mono.Cecil rewriting engine and boot orchestrator
-│   └── Rework.dll            RimWorld mod assembly (settings, UI, devtools)
-└── Source/                   Solution with the 4 projects (ReworkData, ReworkAPI, ReworkCore, ReworkMod)
+├── About/                    Mod metadata
+├── Assemblies/               Compiled DLLs, ready to play
+│   ├── 0ReworkData.dll       State that survives the in-place reload
+│   ├── 0ReworkAPI.dll        Public API that mods reference
+│   ├── ReworkCore.dll        Mono.Cecil engine, boot and hooks
+│   ├── Rework.dll            The mod itself (settings, UI, inspector)
+│   └── ReworkContent.dll     Declarative content extensions
+└── Source/                   Five projects; see note below
 ```
 
----
+## Building from source
 
-## 🛠️ Building from source (IF YOU ARE GOING TO CREATE A MOD FOR THIS FRAMEWORK)
-
-Requirements: [.NET SDK 8.0+](https://dotnet.microsoft.com/download)
+Requires the [.NET SDK](https://dotnet.microsoft.com/download) (compiles against .NET
+Framework 4.7.2).
 
 ```powershell
 dotnet build "Source\Rework.slnx" -c Release
+dotnet build "Source\ReworkContent\ReworkContent.csproj" -c Release
 ```
 
-The compiled libraries are generated automatically under `Assemblies/`.
+Note the second command: `ReworkContent` is **not** part of the solution and must be
+built on its own. Both commands write the DLLs directly into `Assemblies\`.
 
----
+## Documentation
 
-## 📖 Documentation
+- [MANUAL.md](MANUAL.md) (English) / [MANUAL_ES.md](MANUAL_ES.md) (Spanish) — the full
+  API guide with examples.
+- [GETTING_STARTED.md](GETTING_STARTED.md) / [GETTING_STARTED_ES.md](GETTING_STARTED_ES.md) —
+  a ten-minute tutorial from zero to a working mod.
+- [ERRORS.md](ERRORS.md) (English) / [ERRORES.md](ERRORES.md) (Spanish) — hard rules,
+  known pitfalls and the incident log.
 
-- See [`MANUAL.md`](MANUAL.md) (English) / [`MANUAL_ES.md`](MANUAL_ES.md) (Spanish) for the complete API guide, usage examples and technical specifications.
-- See [`ERRORS.md`](ERRORS.md) (English) / [`ERRORES.md`](ERRORES.md) (Spanish) for known pitfalls, limitations and what you should NOT use or touch.
+## Credits
 
----
-
-## 📜 License & Credits
-
-Developed by **DGZ** as part of the **Reforjed** series.
-Exclusive target: RimWorld 1.6.4850 rev646.
+Developed by **DGZ** as part of the Reforjed series. Built and verified against
+RimWorld 1.6.4850 rev646.
