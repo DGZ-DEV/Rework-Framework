@@ -85,6 +85,11 @@ internal static class Lg
         if (text.Contains("ReworkInterface")) return "InterfaceInjector";
         if (text.Contains("ReworkAnnotate")) return "AnnotateInjector";
         if (text.Contains("ReworkMethod") || text.Contains("ReworkProperty")) return "MethodInjector";
+        if (text.Contains("ReworkRedirect")) return "CallSiteRedirector";
+        if (text.Contains("ReworkOverride")) return "OverrideInjector";
+        if (text.Contains("ReworkUnlock")) return "UnlockProcessor";
+        if (text.Contains("ReworkInline")) return "InlineProcessor";
+        if (text.Contains("ReworkConst")) return "ConstRewriter";
         if (text.Contains("Init")) return "InitRunner";
         if (text.Contains("Entorno") || text.Contains("layout")) return "RuntimeEnvironment";
         return "Rework";

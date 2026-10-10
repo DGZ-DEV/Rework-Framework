@@ -21,8 +21,28 @@ internal static class Reloader
         // bloque 1 (1.2/1.3).
         var toSwap = set.AllAssemblies
             .Where(a => a.NeedsReload && a.SourceAssembly != null
-                        && !ModifiableAssembly.IsUnityEngineAssembly(a.SourceAssembly))
+                        && !ModifiableAssembly.IsUnityEngineAssembly(a.SourceAssembly)
+                        && !IsBarrierAssembly(a))
             .ToList();
+
+        // §47 — INVARIANTE DE BARRERA: 0ReworkData NUNCA se intercambia. DataStore
+        // cruza la barrera del reload precisamente porque su ensamblado no se
+        // recarga; si entrara al swap (por cualquier marcado de Modified/
+        // NeedsReload), cada ciclo de arranque cargaría una copia nueva con
+        // estáticos FRESCOS → startedOnce/ReworkLogSessionOpened se perderían →
+        // BUCLE DE ARRANQUE infinito (verificado empíricamente en §47). El
+        // Reloader es la última línea de defensa: aunque algo lo marque, aquí no
+        // se intercambia, y se loguea el aviso para poder cazar al escritor.
+        foreach (var barrera in set.AllAssemblies.Where(a => a.NeedsReload && IsBarrierAssembly(a)))
+            Lg.Error($"[Reload] {barrera.FriendlyName} quedó marcado para recarga siendo un ensamblado " +
+                     "de BARRERA (0ReworkData): NO se intercambia (invariante §47). Algo lo marcó como " +
+                     "modificado en la pasada 1 — revisar la línea 'Reload: intercambiando' y ERRORES.md §47.");
+
+        // §47 — Diagnóstico: qué entra al swap en este ciclo (los nombres dicen
+        // quién fue marcado Modified/NeedsReload por cada procesador).
+        Lg.Info($"Reload: intercambiando {toSwap.Count} ensamblado(s): " +
+                string.Join(", ", toSwap.Select(a => a.FriendlyName)) + ".");
+
         var skippedEngine = set.AllAssemblies
             .Count(a => a.NeedsReload && a.SourceAssembly != null
                         && ModifiableAssembly.IsUnityEngineAssembly(a.SourceAssembly));
@@ -43,6 +63,14 @@ internal static class Reloader
         foreach (var toReload in toSwap)
             loadAssemblyAction(toReload);
     }
+
+    /// <summary>
+    /// §47 — ¿Es un ensamblado de BARRERA (nunca se intercambia)? 0ReworkData
+    /// porta los estáticos que cruzan el reload (startedOnce, logs, mapas de
+    /// recarga): recargarlo resetea TODO el estado de control del framework.
+    /// </summary>
+    private static bool IsBarrierAssembly(ModifiableAssembly a) =>
+        a.AsmDefinition.Name.Name == "0ReworkData";
 
     /// <summary>
     /// Cualquier ensamblado que dependa de uno que se recarga, también se recarga

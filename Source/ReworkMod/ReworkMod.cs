@@ -58,6 +58,33 @@ public class ReworkMod : Mod
         // --- Pasada 1 ---
         Lg.Info("Pasada 1 iniciada");
 
+        // §47 — GUARDIA ANTI-BUCLE (a prueba de identidad de ensamblados): cuenta
+        // las ejecuciones de la pasada 1 en ESTE proceso con una variable de
+        // entorno, que sobrevive a CUALQUIER recarga (incluso a una hipotética de
+        // 0ReworkData, que resetearía todos los estáticos del framework, incluido
+        // startedOnce). Si la pasada 1 intenta correr más de 2 veces, forzamos la
+        // rama de pasada 2: un bucle de arranque infinito se convierte en boot
+        // degradado + diagnóstico ruidoso en el log.
+        int pass1Runs = 0;
+        int.TryParse(Environment.GetEnvironmentVariable("REWORK_PASS1_RUNS"), out pass1Runs);
+        pass1Runs++;
+        Environment.SetEnvironmentVariable("REWORK_PASS1_RUNS", pass1Runs.ToString());
+        if (pass1Runs > 2)
+        {
+            Lg.Error($"[Rework] GUARDIA ANTI-BUCLE (§47): la pasada 1 intentó ejecutarse {pass1Runs} veces " +
+                     "en este proceso; se fuerza la rama de pasada 2 para no colgar el arranque. Causa típica: " +
+                     "un ensamblado de barrera (0ReworkData) entró al swap y resetea startedOnce — ver la " +
+                     "línea 'Reload: intercambiando' y ERRORES.md §47.");
+            Prefs.data.resetModsConfigOnCrash = false;
+            Lg.FlushBuffered();
+            VerifyPatch();
+            InitRunner.Run();
+            if (ReworkHealth.HasFailures)
+                Lg.Error(ReworkHealth.Summary());
+            DataStore.suppressLogs = false;
+            return;
+        }
+
         // 0) Entorno (bloque 1): modo seguro PROACTIVO (configurable con 18.6).
         //    Solo reescribimos si el runtime es Mono y el layout nativo (offsets de
         //    UnsafeAssembly) verifica en esta build (o si el usuario desactivó el modo seguro).

@@ -144,6 +144,25 @@ internal static class GameProcessing
 
         // 18) Overlays [ReworkOverlay]: Verse.MapComponentUtility.MapComponentOnGUI(Map)
         PatchMapComponentOverlay(asmCSharp);
+
+        // 19) CIRUGÍA IL DECLARATIVA (bloque 24) — las cinco herramientas que un
+        //     runtime-patch NO puede ofrecer, aplicadas sobre el IL final:
+        //     [ReworkUnlock]  : private/internal → public, sealed → heredable,
+        //                       métodos → virtuales (cambios de metadatos).
+        //     [ReworkOverride]: overrides virtuales REALES en clases del juego
+        //                       (forwarder al método del mod, CallBase opcional).
+        //     [ReworkConst]   : ldsfld de static readonly → literal constante.
+        //     [ReworkRedirect]: TODOS los call-sites de un método → tu método
+        //                       (con regla anti-recursión para el call-through).
+        //     [ReworkInline]  : llamadas a getters triviales → acceso directo al
+        //                       campo (inline perfecto en el IL final).
+        //     Van AL FINAL a propósito: reescriben también los call-sites que los
+        //     pasos 2-18 acababan de inyectar en Assembly-CSharp.
+        UnlockProcessor.Process(set, asmCSharp);
+        OverrideInjector.Process(set, asmCSharp);
+        ConstRewriter.Process(set, asmCSharp);
+        CallSiteRedirector.Process(set, asmCSharp);
+        InlineProcessor.Process(set, asmCSharp);
     }
 
     /// <summary>
