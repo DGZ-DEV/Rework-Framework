@@ -1,0 +1,53 @@
+using System;
+using System.Collections.Generic;
+
+namespace Rework;
+
+/// <summary>
+/// Marca una clase como una misión o Quest interactivo declarado completamente en C# sin XML ni QuestScript.
+/// </summary>
+[AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
+public sealed class ReworkQuestAttribute : Attribute
+{
+    public string DefName { get; }
+    public string Title { get; set; } = "";
+
+    public ReworkQuestAttribute(string defName)
+    {
+        DefName = defName;
+    }
+}
+
+/// <summary>
+/// Clase base para misiones de Rework.
+///
+/// §48 — contrato: el framework solo invoca CanTrigger() (cada 60.000 ticks)
+/// y OnAccepted() (si CanTrigger devolvió true). OnSuccess/OnFailed quedan a
+/// disposición del PROPIO mod (llámalos desde tu lógica cuando la misión termine);
+/// el framework no rastrea el desenlace de las misiones.
+/// </summary>
+public abstract class ReworkQuestBase
+{
+    public abstract bool CanTrigger();
+    public abstract void OnAccepted();
+    public abstract void OnSuccess();
+    public abstract void OnFailed();
+}
+
+/// <summary>
+/// Registro y despachador de Quests declarativos de Rework.
+/// </summary>
+public static class ReworkQuestRegistry
+{
+    private static readonly Dictionary<string, Type> registeredQuests = new(StringComparer.OrdinalIgnoreCase);
+
+    public static void Register(string defName, Type questType)
+    {
+        registeredQuests[defName] = questType;
+    }
+
+    /// <summary>Número de quests registrados (para early-out en el dispatch).</summary>
+    public static int Count => registeredQuests.Count;
+
+    public static IReadOnlyDictionary<string, Type> AllQuests => registeredQuests;
+}

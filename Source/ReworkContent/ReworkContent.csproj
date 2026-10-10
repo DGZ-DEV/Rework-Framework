@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ReworkContent: extensión de contenido declarativa (fase "documentación vs código").
+       Añade las 6 features que el MANUAL prometía pero que no existían:
+       [ReworkGene], [ReworkResearch], [ReworkRaid], [ReworkThought],
+       [ReworkApparel] y el atributo [ReworkZoneEffect].
+       Ensamblado autocontenido: NO reescribe los DLL desplegados existentes
+       (Rework.dll/ReworkCore.dll contienen clases sin fuente que se preservan). -->
+
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>10.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Rework</RootNamespace>
+    <AssemblyName>ReworkContent</AssemblyName>
+    <OutputPath>..\..\Assemblies\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Krafs.Rimworld.Ref" Version="1.6.4633" />
+    <!-- Referencia directa (no ProjectReference): evita rebuild de 0ReworkAPI,
+         cuyo DLL desplegado contiene clases sin fuente que se preservan. -->
+    <Reference Include="0ReworkAPI">
+      <HintPath>..\..\Assemblies\0ReworkAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

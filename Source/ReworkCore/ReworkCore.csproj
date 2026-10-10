@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ReworkCore: el motor (rewriter Cecil + reloader Mono).
+       Equivalente a Prepatcher Source/Implementation (PrepatcherImpl). -->
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>10.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>Rework.Core</RootNamespace>
+    <AssemblyName>ReworkCore</AssemblyName>
+    <OutputPath>..\..\Assemblies\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Mono.Cecil 0.11.6: última rama 0.11 estable, compatible net472. -->
+    <PackageReference Include="Mono.Cecil" Version="0.11.6" />
+    <!-- Referencias de ensamblados del juego RimWorld 1.6 (misma vía que Prepatcher). -->
+    <PackageReference Include="Krafs.Rimworld.Ref" Version="1.6.4633" />
+    <!-- Publicize: acceder a privados de Assembly-CSharp (p.ej.
+         LongEventHandler.toExecuteWhenFinished) de la pasada 1. -->
+    <PackageReference Include="Krafs.Publicizer" Version="2.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Publicize Include="Assembly-CSharp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ReworkAPI\ReworkAPI.csproj" />
+    <ProjectReference Include="..\ReworkData\ReworkData.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ReworkMod (Rework.dll) usa Loader/Lg (internal). -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Rework</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

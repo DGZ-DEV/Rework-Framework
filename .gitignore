@@ -1,0 +1,17 @@
+# Visual Studio / Rider / .NET
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Archivos de build y cachés temporales
+.vs/
+.idea/
+*.log
+*.tmp
+
+# Excluir Assemblies compiladas si se prefiere buildear desde source,
+# pero en RimWorld los mods a menudo incluyen las Assemblies listas para jugar.
+# Si deseas subir el mod listo para usar en Steam/GitHub, Assemblies/ se conserva.
