@@ -339,6 +339,19 @@ public class Dialog_ReworkInspector : Window
         listing.Label($"Perfil de Rendimiento: {ReworkConfig.PerfProfile}");
         listing.Label($"DeltaTime de Frame: {(Time.deltaTime * 1000f):F2} ms (~{(int)(1f / Time.unscaledDeltaTime)} FPS)");
 
+        // §48: el "Perfilador integrado" (ReworkProfiler) por fin tiene consumidor:
+        // si un midió fases con ReworkProfiler.Begin/End, se muestran aquí (el
+        // docstring de la API y el punto 19.8 del MANUAL lo prometían y nadie
+        // leía Summary()).
+        string fases = Rework.Perf.ReworkProfiler.Summary();
+        if (fases.Length > 0)
+        {
+            listing.Gap();
+            listing.Label("Fases medidas (ReworkProfiler):");
+            foreach (var fase in fases.Split(' '))
+                listing.Label($"  {fase}");
+        };
+
         listing.Gap();
         Text.Font = GameFont.Medium;
         listing.Label("Visualizador de Hilos (Rework.Threading)");

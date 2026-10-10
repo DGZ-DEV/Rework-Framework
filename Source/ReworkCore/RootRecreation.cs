@@ -98,43 +98,10 @@ public static class RootRecreation
         return count;
     }
 
-    /// <summary>
-    /// Conversión de componentes ORIGINALES creados en RUNTIME (no en el escenario).
-    /// La vista de mundo crea GameObjects persistente (DontDestroyOnLoad) — WorldCamera,
-    /// WorldSkyboxCamera — desde código que a veces liga al tipo ORIGINAL (refonly),
-    /// por lo que su MonoBehaviour (p.ej. WorldCameraDriver) despierta sin el parche de
-    /// la pasada 2 y revienta (→ ctor estático de WorldCameraManager aborta →
-    /// Find.WorldCameraDriver null → NREs en cadena del globo).
-    ///
-    /// Barrer con FindObjectsOfTypeAll también devuelve ACTIVOS/prefabs; se filtran con
-    /// go.scene.isLoaded (solo objetos de escenas cargadas o DontDestroyOnLoad), para no
-    /// corromper recursos. Devuelve cuántos componente recreó con tipos nuevos.
-    /// </summary>
-    public static int RecreateRuntimeOriginalComponents(Assembly newAsm)
-    {
-        var gos = new HashSet<GameObject>();
-        foreach (var obj in UnityEngine.Object.FindObjectsOfTypeAll(typeof(Component)))
-        {
-            var c = (Component)obj;
-            if (c is Transform || c is RectTransform)
-                continue;
-            var a = c.GetType().Assembly;
-            if (a.GetName().Name != AssemblyCollector.AssemblyCSharp)
-                continue;
-            if (!DataStore.RefOnlyOriginals.Contains(a))
-                continue;
-            // igual que el RecreateComponents de Prepatcher: convertimos el componente
-            // ORIGINAL (refonly) esté donde esté, incluidos los DontDestroyOnLoad que
-            // crea la vista de mundo (p.ej. WorldCameraDriver). No filtramos por
-            // scene.isLoaded: la cámara de mundo exit no la cumple y se saltaría.
-            gos.Add(c.gameObject);
-        }
-
-        var count = 0;
-        foreach (var go in gos)
-            count += RecreateGameObjectComponents(go, newAsm);
-        return count;
-    }
+    // §48: el antiguo RecreateRuntimeOriginalComponents fue ELIMINADO junto con su
+    // único consumidor (RuntimeHooks.SweepOriginalComponents, despachador fantasma:
+    // sus inyectadores quedaron huérfanos al superarlos la subclase única
+    // ReworkWorldCameraDriver). RecreateGameObjectComponents sigue vivo (SwapRoot).
     /// LongEventHandler). oldRootType se captura COMO VALOR en la pasada 1 (Verse.Root
     /// original); el ensamblado nuevo se resuelve en tiempo de ejecución (ver bb.).
     /// </summary>

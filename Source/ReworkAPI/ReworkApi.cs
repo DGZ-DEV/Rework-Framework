@@ -17,7 +17,14 @@ namespace Rework;
 /// </summary>
 public static class ReworkApi
 {
-    /// <summary>¿El framework Rework Reforjed está presente/activo en este runtime?</summary>
+    /// <summary>¿El framework Rework Reforjed está presente/activo en este runtime?
+    ///
+    /// §48 — HONESTIDAD: si Rework NO está instalado, esta propiedad no puede
+    /// devolverte false: sin 0ReworkAPI.dll cargada, el JIT del acceso al tipo
+    /// lanza FileNotFoundException ANTES de ejecutar el ctor estático. Para
+    /// degradación real, envuelve el acceso en try/catch (o usa reflexión) y
+    /// trata la excepción como "ausente". IsPresent==false solo ocurre si la
+    /// API está cargada pero falla su inicialización.</summary>
     public static bool IsPresent { get; }
 
     /// <summary>Versión de la API (16.3), p.ej. "1.0.0" — del AssemblyInformationalVersion.</summary>

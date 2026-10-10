@@ -193,6 +193,7 @@ internal static class GameProcessing
         var il = method.Body.GetILProcessor();
         il.InsertBefore(first, il.Create(OpCodes.Call, hookRef));
         Lg.Info("Parche aplicado: GameComponentUtility.GameComponentTick → RuntimeHooks.OnGameComponentTick (despachador global)");
+        Data.DataStore.AppliedPatches.Add("GameComponentUtility.GameComponentTick → RuntimeHooks.OnGameComponentTick (despachador global)");
         asmCSharp.Modified = true;
     }
 
@@ -232,6 +233,7 @@ internal static class GameProcessing
             il.InsertBefore(ret, il.Create(OpCodes.Ldarg_0));
             il.InsertBefore(ret, il.Create(OpCodes.Call, callRef));
             Lg.Info($"[ReworkGizmo] Parche aplicado: {typeName}.GetGizmos → AppendReworkGizmos");
+            Data.DataStore.AppliedPatches.Add($"[ReworkGizmo] {typeName}.GetGizmos → AppendReworkGizmos");
             asmCSharp.Modified = true;
         }
     }
@@ -276,6 +278,7 @@ internal static class GameProcessing
             if (patched > 0)
             {
                 Lg.Info($"[ReworkInspectString] Parche aplicado: {typeName}.GetInspectString → AppendReworkInspectString ({patched} ret(s))");
+            Data.DataStore.AppliedPatches.Add($"[ReworkInspectString] {typeName}.GetInspectString → AppendReworkInspectString");
                 asmCSharp.Modified = true;
             }
         }
@@ -312,6 +315,7 @@ internal static class GameProcessing
         il.InsertBefore(ret, il.Create(OpCodes.Ldarg_0));
         il.InsertBefore(ret, il.Create(OpCodes.Call, hookRef));
         Lg.Info("[ReworkAlert] Parche aplicado: AlertsReadout.ctor → AttachReworkAlerts");
+        Data.DataStore.AppliedPatches.Add("[ReworkAlert] AlertsReadout.ctor → AttachReworkAlerts");
         asmCSharp.Modified = true;
     }
 
@@ -348,7 +352,14 @@ internal static class GameProcessing
                 && ret.Previous.Previous.Operand is MethodReference pmr && pmr.FullName == hookRef.FullName)
                 continue;
 
-            il.InsertBefore(ret, il.Create(OpCodes.Ldarg_0));
+            // §48 (anti-fantasma): Ldarg_1 = el Pawn REAL de GetPriority(Pawn pawn).
+            // Antes se empujaba Ldarg_0 (el ThinkNode 'this') sobre un parámetro
+            // declarado como Verse.Pawn → el 'pawn' llegaba corrupto (cast fallido →
+            // null en AdaptAiModifier) y el modificador jamás veía al colono.
+            // jobDefName: en ThinkNode.GetPriority NO existe contexto de trabajo, así
+            // que se pasa "" (global); TargetJobDef se avisa como incompatible en el
+            // escáner (ReworkAttributeScanners) — ver §48.
+            il.InsertBefore(ret, il.Create(OpCodes.Ldarg_1));
             il.InsertBefore(ret, il.Create(OpCodes.Ldstr, ""));
             il.InsertBefore(ret, il.Create(OpCodes.Call, hookRef));
             patched++;
@@ -357,6 +368,7 @@ internal static class GameProcessing
         if (patched > 0)
         {
             Lg.Info($"[ReworkAIModifier] Parche aplicado: ThinkNode.GetPriority → AdjustThinkPriority ({patched} ret(s))");
+            Data.DataStore.AppliedPatches.Add("[ReworkAIModifier] ThinkNode.GetPriority → AdjustThinkPriority");
             asmCSharp.Modified = true;
         }
     }
@@ -419,6 +431,7 @@ internal static class GameProcessing
             il.InsertBefore(first, il.Create(OpCodes.Ldstr, evtName));
             il.InsertBefore(first, il.Create(OpCodes.Call, wantRef));
             Lg.Info($"[ReworkBus] Parche aplicado: {typeName}.{methodName} → PublishLifecycleEvent('{evtName}')");
+            Data.DataStore.AppliedPatches.Add($"[ReworkBus] {typeName}.{methodName} → PublishLifecycleEvent('{evtName}')");
             asmCSharp.Modified = true;
         }
     }
@@ -452,6 +465,7 @@ internal static class GameProcessing
         il.InsertBefore(first, il.Create(OpCodes.Ldarg_1));
         il.InsertBefore(first, il.Create(OpCodes.Call, hookRef));
         Lg.Info("[ReworkLore] Parche aplicado: HistoryEventsManager.RecordEvent → OnHistoryEvent");
+        Data.DataStore.AppliedPatches.Add("[ReworkLore] HistoryEventsManager.RecordEvent → OnHistoryEvent");
         asmCSharp.Modified = true;
     }
 
@@ -484,6 +498,7 @@ internal static class GameProcessing
         il.InsertBefore(first, il.Create(OpCodes.Ldarg_0));
         il.InsertBefore(first, il.Create(OpCodes.Call, hookRef));
         Lg.Info("[ReworkOverlay] Parche aplicado: MapComponentUtility.MapComponentOnGUI → RenderReworkOverlays");
+        Data.DataStore.AppliedPatches.Add("[ReworkOverlay] MapComponentUtility.MapComponentOnGUI → RenderReworkOverlays");
         asmCSharp.Modified = true;
     }
 
@@ -526,6 +541,7 @@ internal static class GameProcessing
         il.InsertBefore(first, il.Create(OpCodes.Ret));
 
         Lg.Info("Parche aplicado: Verse.Log.Error → ShouldSuppressLog (silencio del ruido de reinicio)");
+        Data.DataStore.AppliedPatches.Add("Verse.Log.Error → ShouldSuppressLog (silencio del ruido de reinicio)");
         asmCSharp.Modified = true;
     }
 
@@ -568,6 +584,7 @@ internal static class GameProcessing
         if (changed)
         {
             Lg.Info("Parche aplicado: ModAssemblyHandler.ReloadAll → ReworkLoader.LoadFile");
+        Data.DataStore.AppliedPatches.Add("ModAssemblyHandler.ReloadAll → ReworkLoader.LoadFile");
             asmCSharp.Modified = true;
         }
         else
@@ -608,6 +625,7 @@ internal static class GameProcessing
         il.InsertBefore(ret, il.Create(OpCodes.Call, wrapRef));
 
         Lg.Info("Parche aplicado: GenTypes.AllActiveAssemblies → RuntimeHooks.WrapActiveAssemblies");
+        Data.DataStore.AppliedPatches.Add("GenTypes.AllActiveAssemblies → RuntimeHooks.WrapActiveAssemblies");
         asmCSharp.Modified = true;
     }
 
@@ -709,6 +727,7 @@ internal static class GameProcessing
         if (madeChanges)
         {
             Lg.Info("Parche aplicado: MusicManagerEntry.StartPlaying → guardia de defs + recuperación de dummy existente");
+        Data.DataStore.AppliedPatches.Add("MusicManagerEntry.StartPlaying → guardia de defs + recuperación de dummy existente");
             asmCSharp.Modified = true;
         }
         else
@@ -748,6 +767,7 @@ internal static class GameProcessing
         il.InsertBefore(first, il.Create(OpCodes.Call, ensureRegistered));
 
         Lg.Info("Parche aplicado: Verse.Root.Start → SceneRootHook.EnsureRegistered (transiciones de escena)");
+        Data.DataStore.AppliedPatches.Add("Verse.Root.Start → SceneRootHook.EnsureRegistered (transiciones de escena)");
         asmCSharp.Modified = true;
     }
 
@@ -791,135 +811,7 @@ internal static class GameProcessing
         il.InsertBefore(first, il.Create(OpCodes.Ret));
 
         Lg.Info("Parche aplicado: WorldCameraDriver.ApplyPositionToGameObject → if (Current.Game == null) ret");
-        asmCSharp.Modified = true;
-    }
-
-    /// <summary>
-    /// Inyecta una llamada a RuntimeHooks.SweepOriginalComponents() al inicio de
-    /// RimWorld.WorldInterface.Reset (entrada de la vista de mundo/planeta). Convierte
-    /// a tipos NUEVOS los componentes ORIGINALES creados en runtime (cámara de mundo
-    /// DontDestroyOnLoad) justo antes de que la vista se active.
-    /// </summary>
-    private static void PatchWorldInterfaceResetRuntimeSweep(ModifiableAssembly asmCSharp)
-    {
-        var module = asmCSharp.ModuleDefinition;
-
-        var method = module.Types
-            .FirstOrDefault(t => t.FullName == "RimWorld.WorldInterface")
-            ?.Methods.FirstOrDefault(m => m.Name == "Reset");
-        if (method == null)
-        {
-            Lg.Error("No se encontró RimWorld.WorldInterface.Reset para parchear el sweep de runtime.");
-            return;
-        }
-
-        var sweep = module.ImportReference(
-            typeof(RuntimeHooks).GetMethod(nameof(RuntimeHooks.SweepOriginalComponents)));
-
-        var first = method.Body.Instructions[0];
-        if (first.OpCode == OpCodes.Call
-            && first.Operand is MethodReference pmr
-            && pmr.FullName == sweep.FullName)
-            return;
-
-        var il = method.Body.GetILProcessor();
-        il.InsertBefore(first, il.Create(OpCodes.Call, sweep));
-
-        Lg.Info("Parche aplicado: WorldInterface.Reset → RuntimeHooks.SweepOriginalComponents (conversión de runtime)");
-        asmCSharp.Modified = true;
-    }
-
-    /// <summary>
-    /// Inyecta una llamada a RuntimeHooks.SweepOriginalComponents() justo antes del
-    /// ret de RimWorld.Planet.WorldCameraManager.CreateWorldCamera. Convierte a tipo
-    /// NUEVO el WorldCameraDriver que AddComponent pudo ligar a ORIGINAL (refonly),
-    /// antes de que el ctor estático haga GetComponent<WorldCameraDriver> y asigne
-    /// worldCameraDriverInt (que si no, queda null → Find.WorldCameraDriver null).
-    /// </summary>
-    private static void PatchWorldCameraManagerCreateWorldCameraSweep(ModifiableAssembly asmCSharp)
-    {
-        var module = asmCSharp.ModuleDefinition;
-
-        var method = module.Types
-            .FirstOrDefault(t => t.FullName == "RimWorld.Planet.WorldCameraManager")
-            ?.Methods.FirstOrDefault(m => m.Name == "CreateWorldCamera");
-        if (method == null)
-        {
-            Lg.Error("No se encontró WorldCameraManager.CreateWorldCamera para parchear el sweep.");
-            return;
-        }
-
-        var sweep = module.ImportReference(
-            typeof(RuntimeHooks).GetMethod(nameof(RuntimeHooks.SweepOriginalComponents)));
-
-        var ret = method.Body.Instructions.LastOrDefault(i => i.OpCode == OpCodes.Ret);
-        if (ret == null)
-            return;
-
-        var prev = ret.Previous;
-        if (prev != null && prev.OpCode == OpCodes.Call
-            && prev.Operand is MethodReference pmr
-            && pmr.FullName == sweep.FullName)
-            return;
-
-        var il = method.Body.GetILProcessor();
-        il.InsertBefore(ret, il.Create(OpCodes.Call, sweep));
-
-        Lg.Info("Parche aplicado: WorldCameraManager.CreateWorldCamera → SweepOriginalComponents (antes del ret)");
-        asmCSharp.Modified = true;
-    }
-
-    /// <summary>
-    /// Prefix en RimWorld.Planet.WorldCameraManager.get_WorldCameraDriver:
-    ///   WorldCameraDriver get() {
-    ///     var v = worldCameraDriverInt;
-    ///     if (v != null) return v;          // path normal
-    ///     return RuntimeHooks.EnsureWorldCameraDriver();  // auto-reparación
-    ///   }
-    /// Resolver es válido: el getter original es `ldsfld worldCameraDriverInt; ret`.
-    /// </summary>
-    private static void PatchWorldCameraManagerGetDriverSelfHeal(ModifiableAssembly asmCSharp)
-    {
-        var module = asmCSharp.ModuleDefinition;
-
-        var method = module.Types
-            .FirstOrDefault(t => t.FullName == "RimWorld.Planet.WorldCameraManager")
-            ?.Properties.FirstOrDefault(p => p.Name == "WorldCameraDriver")
-            ?.GetMethod;
-        if (method == null)
-        {
-            Lg.Error("No se encontró WorldCameraManager.get_WorldCameraDriver para parchear.");
-            return;
-        }
-
-        var ensureRef = module.ImportReference(
-            typeof(RuntimeHooks).GetMethod(nameof(RuntimeHooks.EnsureWorldCameraDriver)));
-
-        var first = method.Body.Instructions[0];
-        // La instrucción original es ldsfld worldCameraDriverInt; ret. Detectamos si ya
-        // está parcheado: el first sería una Dup (inyectada) o un Ldsfld (replicado).
-        if (first.OpCode == OpCodes.Dup)
-            return;
-
-        var origLdFld = method.Body.Instructions.FirstOrDefault(i => i.OpCode == OpCodes.Ldsfld);
-        var origRet = method.Body.Instructions.LastOrDefault(i => i.OpCode == OpCodes.Ret);
-        if (origLdFld == null || origRet == null)
-            return;
-
-        // Empalme entre el ldsfld original y su ret:
-        //   ldsfld worldCameraDriverInt       (original)
-        //   dup                                -> v
-        //   brtrue.s ret                       -> si v != null devuelve v
-        //   pop                                -> descarta el null
-        //   call EnsureWorldCameraDriver()     -> devuelve el driver reparado
-        //   ret                                (original)
-        var il = method.Body.GetILProcessor();
-        il.InsertBefore(origRet, il.Create(OpCodes.Dup));
-        il.InsertBefore(origRet, il.Create(OpCodes.Brtrue_S, origRet));
-        il.InsertBefore(origRet, il.Create(OpCodes.Pop));
-        il.InsertBefore(origRet, il.Create(OpCodes.Call, ensureRef));
-
-        Lg.Info("Parche aplicado: WorldCameraManager.get_WorldCameraDriver → auto-reparación si worldCameraDriverInt null");
+        Data.DataStore.AppliedPatches.Add("WorldCameraDriver.ApplyPositionToGameObject → guardia Current.Game == null");
         asmCSharp.Modified = true;
     }
 
@@ -970,6 +862,7 @@ internal static class GameProcessing
         }
 
         Lg.Info("Parche aplicado: CreateWorldCamera → AddComponent<ReworkWorldCameraDriver> (subclase única)");
+        Data.DataStore.AppliedPatches.Add("WorldCameraManager.CreateWorldCamera → ReworkWorldCameraDriver (subclase única)");
         asmCSharp.Modified = true;
     }
 

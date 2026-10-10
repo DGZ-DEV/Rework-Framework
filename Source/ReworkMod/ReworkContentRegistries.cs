@@ -456,7 +456,27 @@ public static class ReworkDesignatorRegistry
             {
                 category.specialDesignatorClasses.Add(designatorType);
                 registered[designatorType] = category;
-                Lg.Info($"[ReworkDesignator] Registrado {designatorType.Name} en categoría '{category.defName}'.");
+
+                // §48 (anti-fantasma): ResolveDesignators ya corrió antes que cualquier
+                // [StaticConstructorOnStartup] (vanilla lo encola desde ResolveReferences
+                // vía LongEventHandler.ExecuteWhenFinished, orden FIFO de DoPlayLoad —
+                // verificado contra el IL real). Sin re-resolver, el Type queda en una
+                // lista ya consumida y el designador NUNCA aparece en la barra Arquitecto.
+                // ResolveDesignators es un rebuild completo (Clear + reinstanciar
+                // specialDesignatorClasses + reconstruir los Designator_Build), así que
+                // re-invocarlo tras añadir es seguro y con idempotencia de inventario.
+                var resolve = category.GetType().GetMethod("ResolveDesignators",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (resolve != null)
+                {
+                    resolve.Invoke(category, null);
+                    Lg.Info($"[ReworkDesignator] Registrado {designatorType.Name} en categoría '{category.defName}' (re-resuelta).");
+                }
+                else
+                {
+                    Lg.Error($"[ReworkDesignator] No se halló DesignationCategoryDef.ResolveDesignators para " +
+                             $"'{category.defName}'; el designador {designatorType.Name} NO aparecerá en el menú.");
+                }
                 return true;
             }
 
@@ -561,6 +581,15 @@ public static class ReworkGenStepRegistry
                     mapGen.genSteps.Add(genStepDef);
                     mapGen.genSteps.Sort((a, b) => a.order.CompareTo(b.order));
                 }
+            }
+            else
+            {
+                // §48: antes era info silenciosa — un GenStepDef sin enlazar a ningún
+                // MapGeneratorDef JAMÁS se ejecuta (el generador solo corre su lista
+                // genSteps): es un fantasma de generación. Que se oiga.
+                Lg.Error($"[ReworkGenStep] GenStepDef '{attr.DefName}' registrado PERO SIN ENLAZAR: no existe " +
+                         $"MapGeneratorDef '{attr.MapGenerator}' (ni 'MainMapGenerator'). NO se ejecutará en " +
+                         "ningún mapa salvo que lo enlaces a mano a un MapGeneratorDef.genSteps.");
             }
 
             Lg.Info($"[ReworkGenStep] Registrado GenStepDef '{attr.DefName}' -> {genStepType.Name} (order={attr.Order}, mapGen={mapGen?.defName}).");

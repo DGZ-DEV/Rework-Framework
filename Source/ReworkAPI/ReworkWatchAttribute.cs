@@ -5,10 +5,13 @@ namespace Rework;
 /// <summary>
 /// Marca un método estático como callback reactivo cuando cambia el valor de un campo inyectado ([ReworkField]).
 ///
-/// Mecanismo:
-/// En lugar de hacer polling en cada tick del juego, Rework intercepta la mutación del campo o
-/// la invocación de su setter / modificador, publicando automáticamente un evento en ReworkBus
-/// y llamando al método observado.
+/// Mecanismo REAL (§48 — doc honesta): la AUTO-DETECCIÓN es POLLING por tick —
+/// ReworkWatchRegistry.AutoTick muestrea cada tick las instancias vivas y compara
+/// el valor actual con el anterior por reflexión; si cambia, llama tu método y
+/// publica un evento en ReworkBus. Limitación de la auto-detección: solo muestrea
+/// instancias de Pawn y Map; campos en otros tipos requieren que notifiques a
+/// mano con ReworkWatch.NotifyChanged(target, campo, old, new) desde tu propio
+/// código (esa llamada manual no publica el evento al bus).
 ///
 /// Firma esperada del método observado:
 ///   public static void OnXpChanged(Pawn pawn, float oldValue, float newValue)

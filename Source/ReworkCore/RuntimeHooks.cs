@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using Rework;
 using Rework.Data;
@@ -48,148 +49,23 @@ public static class RuntimeHooks
     /// </summary>
     public static bool ShouldSuppressLog(string msg) => DataStore.ShouldSuppressLog(msg);
 
-    /// <summary>
-    /// Convierte a tipos NUEVOS los componentes ORIGINALES creados en runtime (objetos
-    /// persistentes DontDestroyOnLoad, p.ej. la cámara de mundo). Se inyecta en puntos
-    /// estratégicos (entrada de la vista de mundo) para que el MonoBehaviour original
-    /// (p.ej. WorldCameraDriver) deje de ejecutar el código refonly sin parchear.
-    /// </summary>
-    public static void SweepOriginalComponents()
-    {
-        try
-        {
-            var newAsm = RootRecreation.FindNewAssemblyCSharp();
-            if (newAsm == null)
-                return;
-            var count = RootRecreation.RecreateRuntimeOriginalComponents(newAsm);
-            if (count > 0)
-                Lg.Info($"RuntimeHooks: {count} componente(s) original(es) de runtime convertido(s).");
-            LogWorldCameraDiagnostic(count);
-        }
-        catch (System.Exception e)
-        {
-            Lg.Error($"RuntimeHooks.SweepOriginalComponents falló: {e}");
-        }
-    }
+    // §48 (auditoría anti-fantasma): los antiguos despachadores
+    // SweepOriginalComponents / EnsureWorldCameraDriver / LogWorldCameraDiagnostic
+    // fueron ELIMINADOS. Sus inyectadores (PatchWorldInterfaceResetRuntimeSweep,
+    // PatchWorldCameraManagerCreateWorldCameraSweep y
+    // PatchWorldCameraManagerGetDriverSelfHeal) quedaron huérfanos al ser superados
+    // por la solución definitiva de la cámara (subclase ReworkWorldCameraDriver,
+    // paso 7 del pipeline): los despachadores estaban documentados como "se inyecta
+    // en puntos estratégicos" cuando NADA los inyectaba — patrón §44 inverso
+    // (inyector huérfano ⇒ despachador inactivo). Historial: ERRORES.md §48.
 
-    /// <summary>
-    /// Se llama desde WorldCameraManager.get_WorldCameraDriver cuando worldCameraDriverInt
-    /// es null. El ctor estático NUEVO completó (worldCameraInt existe) pero
-    /// GetComponent<WorldCameraDriver>() (NUEVO) no halló el driver.
-    ///
-    /// RAÍZ (confirmada con diagnóstico): Unity materializa el componente WorldCameraDriver
-    /// del ensamblado ORIGINAL (refonly=True) aunque se le pase el tipo NUEVO, por la
-    /// colisión de FullName dado que hay DOS ensamblados "Assembly-CSharp". Por eso
-    /// destruir/re-añadir un driver NUEVO nunca funciona y provoca Awake recursivo.
-    ///
-    /// REDISEÑO: aceptamos el driver ORIGINAL (código vanilla, funcional) que Unity ya
-    /// creó en la cámara de mundo y apuntamos worldCameraDriverInt a él. Así
-    /// Find.WorldCameraDriver deja de ser null y se eliminan los NREs por frame
-    /// (ExpandableWorldObjects, SortByExpandingIconPriority, WorldInterface). No
-    /// destruimos ni re-añadimos → no hay Awake recursivo.
-    /// </summary>
-    public static RimWorld.Planet.WorldCameraDriver EnsureWorldCameraDriver()
-    {
-        var wcm = System.Type.GetType("RimWorld.Planet.WorldCameraManager, Assembly-CSharp");
-        var cam = (Camera)(wcm == null ? null : wcm.GetField("worldCameraInt", BindingFlags.NonPublic | BindingFlags.Static)?.GetValue(null));
-        if (cam == null)
-        {
-            Lg.Info("EnsureWorldCameraDriver: worldCameraInt es null.");
-            return null;
-        }
-
-        var go = cam.gameObject;
-
-        // Tomamos el driver que Unity creó en la cámara (ORIGINAL, código vanilla
-        // funcional). Si no existe, lo fabricamos con el tipo NUEVO — que termina
-        // materializando el ORIGINAL igualmente — pero SIN re-añadir innecesariamente.
-        RimWorld.Planet.WorldCameraDriver driver = null;
-        foreach (var comp in go.GetComponents<Component>())
-        {
-            if (comp is RimWorld.Planet.WorldCameraDriver d)
-            {
-                driver = d;
-                break;
-            }
-        }
-        if (driver == null)
-        {
-            var newAsm = RootRecreation.FindNewAssemblyCSharp();
-            var t = newAsm?.GetType("RimWorld.Planet.WorldCameraDriver", throwOnError: false);
-            if (t != null)
-            {
-                var wasActive = go.activeSelf && go.activeInHierarchy;
-                if (wasActive)
-                    go.SetActive(false);
-                go.AddComponent(t);
-                if (wasActive)
-                    go.SetActive(true);
-                foreach (var comp in go.GetComponents<Component>())
-                {
-                    if (comp is RimWorld.Planet.WorldCameraDriver d)
-                    {
-                        driver = d;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (driver != null)
-        {
-            Lg.Info("EnsureWorldCameraDriver: tomando driver " + driver.GetType().FullName +
-                " de " + driver.GetType().Assembly.GetName().Name +
-                " (refonly=" + DataStore.RefOnlyOriginals.Contains(driver.GetType().Assembly) + ")");
-            var wdField = wcm.GetField("worldCameraDriverInt", BindingFlags.NonPublic | BindingFlags.Static);
-            if (wdField != null)
-                wdField.SetValue(null, driver);
-        }
-        return driver;
-    }
-
-    /// <summary>
-    /// Diagnóstico (temporal): revela el estado real de WorldCameraManager.
-    /// worldCameraDriverInt null ⇒ el ctor estático NUEVO abortó antes de GetComponent,
-    /// o el GetComponent ligó al tipo ORIGINAL. Muestra también el ensamblado del driver.
-    /// </summary>
-    private static void LogWorldCameraDiagnostic(int converted)
-    {
-        try
-        {
-            var t = System.Type.GetType("RimWorld.Planet.WorldCameraManager, Assembly-CSharp");
-            if (t == null)
-            {
-                Lg.Info($"[diag] WorldCameraManager no resuelto por Type.GetType");
-                return;
-            }
-            var wcmAsm = t.Assembly.GetName().Name;
-            var wi = t.GetField("worldCameraInt", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-            var wiV = wi?.GetValue(null);
-            var sc = t.GetField("worldSkyboxCameraInt", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-            var scV = sc?.GetValue(null);
-            var wd = t.GetField("worldCameraDriverInt", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-            var wdV = wd?.GetValue(null);
-            var mov = "  converted=" + converted;
-            mov += "  WCM_asm=" + wcmAsm;
-            mov += "  worldCameraInt=" + (wiV != null ? wiV.GetType().Assembly.GetName().Name : "NULL");
-            mov += "  skyboxCameraInt=" + (scV != null ? scV.GetType().Assembly.GetName().Name : "NULL");
-            mov += "  worldCameraDriverInt=" +
-                (wdV != null ? wdV.GetType().Assembly.GetName().Name + "::" + wdV.GetType().FullName : "NULL");
-            Lg.Info("[diag] " + mov);
-        }
-        catch (System.Exception e)
-        {
-            Lg.Info($"[diag] LogWorldCameraDiagnostic falló: {e.Message}");
-        }
-    }
-
-    private static System.DateTime lastXmlSaveTime = System.DateTime.MinValue;
 
     /// <summary>
     /// Intercepta la culminación de SafeSaver.Save:
     /// 1. Genera SIEMPRE el archivo binario ultrarrápido (.rwbin) con el centinela #REFORJED.
-    /// 2. Si no ha transcurrido el intervalo configurado de respaldo XML (ej: 15 min),
-    ///    conserva el XML existente como respaldo de tiempo anterior o evita el costo si ya existe.
+    /// 2. Empaqueta los almacenes de servicio de Rework en el compañero .rwdat
+    ///    (ReworkPersistence.SaveAll).
+    /// (El respaldo XML de tiempo lo gestiona GameComponent_ReworkXmlBackup.)
     /// </summary>
     public static void OnSafeSaveCompleted(string savePath)
     {
@@ -209,14 +85,6 @@ public static class RuntimeHooks
             // ReworkPawnTimeline, ReworkWorldStore, ...) se empaquetan en el compañero
             // .rwdat junto al save (ReworkPersistence.SaveAll).
             ReworkPersistence.SaveAll(savePath);
-
-            // Gestión del XML único de Respaldo de Tiempo:
-            // Si el XML de tiempo está activado, registramos el timestamp del XML principal
-            var now = System.DateTime.UtcNow;
-            if (lastXmlSaveTime == System.DateTime.MinValue)
-            {
-                lastXmlSaveTime = now;
-            }
         }
         catch (System.Exception e)
         {
@@ -228,9 +96,21 @@ public static class RuntimeHooks
     /// Intenta cargar el XmlDocument directamente desde el binario (.rwbin) con centinela #REFORJED.
     /// Si existe y es íntegro, lo descomprime y retorna su DocumentElement.
     /// Si no existe o está corrupto, retorna null para que RimWorld cargue el XML (.rws) vanilla como fallback.
+    ///
+    /// §48 (anti-fantasma): en AMBAS rutas se restaura el compañero .rwdat
+    /// (ReworkPersistence.LoadAll) — antes NADIE lo llamaba: los 5 almacenes de
+    /// servicio (ColonySkill, PawnTimeline, WorldStore, StateSnapshot, Relation)
+    /// se GUARDABAN en cada partida y se PERDÍAN en cada carga (y las migraciones
+    /// re-ejecutaban porque su versión vive en el WorldStore no restaurado).
     /// </summary>
     public static System.Xml.XmlElement? TryLoadBinaryDocument(string filePath)
     {
+        // Restaurar SIEMPRE los almacenes de servicio del save que se está abriendo
+        // (si no hay .rwdat, LoadAll no hace nada). Corre ANTES de que
+        // "GameInitialized" dispare las migraciones, que así ven la versión
+        // restaurada y no re-ejecutan.
+        ReworkPersistence.LoadAll(filePath);
+
         try
         {
             if (string.IsNullOrEmpty(filePath)) return null;
@@ -270,9 +150,6 @@ public static class RuntimeHooks
 
     /// <summary>Delegado que ReworkMod conecta al auto-detector de [ReworkWatch] (tick por tick).</summary>
     public static System.Action? AutoWatchTick;
-
-    /// <summary>Delegado que ReworkMod conecta para avisar de cualquier cambio de estado (reserva).</summary>
-    public static System.Action? OnStateChanged;
 
     /// <summary>
     /// Despachador de tick global. Inyectado al INICIO de
@@ -365,17 +242,20 @@ public static class RuntimeHooks
         return current + "\n" + extra;
     }
 
-    private static bool reworkAlertsAttached;
-
     /// <summary>
     /// Registra las alertas [ReworkAlert] declarativas en el AlertsReadout real.
     /// Inyectado antes del ret final de RimWorld.AlertsReadout.ctor() — justo después
     /// de que vanilla construya AllAlerts desde allAlertTypesCached; añadimos las
-    /// nuestras (idempotente: solo una vez por sesión).
+    /// nuestras.
+    ///
+    /// §48: idempotencia POR INSTANCIA de readout (antes era un flag global
+    /// `reworkAlertsAttached` que jamás se reseteaba: al salir al menú y entrar
+    /// en una SEGUNDA partida, el nuevo AlertsReadout se quedaba sin alertas).
+    /// Cada readout nuevo se sondea contra AllAlerts del propio readout.
     /// </summary>
     public static void AttachReworkAlerts(RimWorld.AlertsReadout readout)
     {
-        if (readout == null || reworkAlertsAttached) return;
+        if (readout == null) return;
         try
         {
             var all = ReworkAlertRegistry.AllAlerts;
@@ -386,11 +266,15 @@ public static class RuntimeHooks
             // La quitamos antes de añadir las instancias reales con su entrada.
             readout.AllAlerts.RemoveAll(a => a is ReworkRuntime.ReworkCustomAlert rca && rca.IsInert);
 
+            // §48: solo una vez POR READOUT (la sonda del ctor corre una vez por
+            // instancia; esto también cubre un hipotético re-attach).
+            if (readout.AllAlerts.Any(a => a is ReworkRuntime.ReworkCustomAlert rca && !rca.IsInert))
+                return;
+
             foreach (var entry in all)
             {
                 readout.AllAlerts.Add(new ReworkRuntime.ReworkCustomAlert(entry));
             }
-            reworkAlertsAttached = true;
             Lg.Info($"[ReworkAlert] {all.Count} alerta(s) declarativa(s) conectada(s) al AlertsReadout.");
         }
         catch (System.Exception e)
@@ -427,9 +311,19 @@ public static class RuntimeHooks
         try
         {
             ReworkBus.Publish(new ReworkLifecycleEvent(name, context));
-            if (name == "NewGameStarted" || name == "GameInitialized")
+            // §48: ClearAll SOLO en partida nueva. Antes también corría en
+            // "GameInitialized", que se dispara al FINAL de CARGAR una partida:
+            // con LoadAll restaurando los almacenes al inicio de la carga
+            // (TryLoadBinaryDocument), el ClearAll tardío LOS VACIABA otra vez
+            // (persistencia fantasma #1). Las migraciones corren en ambos
+            // eventos: en la carga ven la versión RESTAURADA del WorldStore y
+            // no re-ejecutan; en partida nueva corren sobre almacenes limpios.
+            if (name == "NewGameStarted")
             {
                 ReworkPersistence.ClearAll();
+            }
+            if (name == "NewGameStarted" || name == "GameInitialized")
+            {
                 ReworkMigration.RunAllMigrations(Current.Game, new System.Collections.Generic.Dictionary<string, object>());
             }
         }

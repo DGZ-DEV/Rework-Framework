@@ -36,6 +36,13 @@ public sealed class ReworkRecipeAttribute : Attribute
 /// <summary>
 /// Registra automáticamente un HediffDef de RimWorld en runtime para la clase Hediff decorada.
 /// Permite definir condiciones de salud, implantes, estados mentales y buffs sin escribir archivos XML.
+///
+/// ⚠️ §48 — el registro crea el Def, pero NINGUNA ruta vanilla ni del framework lo
+/// APLICA por sí solo: el hediff solo existe en un pawn cuando algo lo aplica.
+/// Vías de aplicación: una receta con addsHediff, código tuyo
+/// (pawn.health.AddHediff), o un [ReworkStatusEffect] con el MISMO defName
+/// (eso sí lo aplica/ex-pira el framework). Sin una de ellas, el Def queda
+/// registrado pero inerte.
 /// </summary>
 [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
 public sealed class ReworkHediffAttribute : Attribute

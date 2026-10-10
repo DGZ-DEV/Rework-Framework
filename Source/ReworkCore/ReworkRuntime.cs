@@ -19,7 +19,9 @@ namespace Rework.Core;
 ///   GizmoRuntime       → crea Command_Action para entradas [ReworkGizmo]
 ///   StatusEffectRuntime→ administra hediffs de [ReworkStatusEffect] con expiración
 ///   ZoneRuntime        → dispara [ReworkZoneEffect]-API sobre zonas vanilla por tick
-///   LoreRuntime        → texto narrativo [ReworkLore] por HistoryEvent
+///
+/// Nota: el lore [ReworkLore] vive en RuntimeHooks.OnHistoryEvent (inyectado en
+/// HistoryEventsManager.RecordEvent); no hay clase "LoreRuntime".
 /// </summary>
 public static class ReworkRuntime
 {
@@ -238,7 +240,16 @@ public static class ReworkRuntime
                 if (data == null) return false;
 
                 var def = DefDatabase<HediffDef>.GetNamedSilentFail(defName);
-                if (def == null) return false;
+                if (def == null)
+                {
+                    // §48: antes este fallo era SILENCIOSO — un registro manual en
+                    // ReworkStatusEffectRegistry (sin atributo, que es quien crea
+                    // el HediffDef) hacía que Apply no hiciera NADA sin explicación.
+                    Lg.Error($"[ReworkStatusEffect] No existe HediffDef '{defName}' (el registro " +
+                             "por atributo lo crea; un registro manual necesita un HediffDef con ese defName " +
+                             "definido por XML o [ReworkHediff]). Efecto NO aplicado.");
+                    return false;
+                }
 
                 var existing = pawn.health.hediffSet.hediffs.FirstOrDefault(h =>
                     h.def != null && h.def.defName == defName);

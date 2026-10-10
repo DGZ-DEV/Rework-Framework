@@ -291,6 +291,15 @@ public static class ReworkRaidRegistry
             curve.Add(new CurvePoint(0f, attr.PointsFactor), false);
             curve.Add(new CurvePoint(10000f, attr.PointsFactor), false);
 
+            // §48 (anti-fantasma): selectionWeightPerPointsCurve es OBLIGATORIO.
+            // RaidStrategyWorker.SelectionWeight hace def.selectionWeightPerPointsCurve
+            // .Evaluate(points) SIN null-check (verificado con Cecil contra el IL real):
+            // sin esta curva, la NRE revienta el Where() de selección de estrategia
+            // y fallan TODAS las raids enemigas mientras exista este def.
+            var weightCurve = new SimpleCurve();
+            weightCurve.Add(new CurvePoint(0f, attr.SelectionWeight), false);
+            weightCurve.Add(new CurvePoint(10000f, attr.SelectionWeight), false);
+
             var raidDef = new RaidStrategyDef
             {
                 defName = attr.DefName,
@@ -300,6 +309,7 @@ public static class ReworkRaidRegistry
                 minPawns = attr.MinPawns,
                 pawnsCanBringFood = true,
                 pointsFactorCurve = curve,
+                selectionWeightPerPointsCurve = weightCurve,
                 arrivalTextEnemy = attr.ArrivalTextEnemy ?? "Una fuerza hostil se acerca.",
                 arrivalTextFriendly = attr.ArrivalTextFriendly ?? "Un grupo aliado llega.",
                 letterLabelEnemy = attr.LetterLabelEnemy ?? "Incursión",

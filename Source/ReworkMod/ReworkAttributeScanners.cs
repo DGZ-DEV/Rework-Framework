@@ -126,7 +126,21 @@ public static class ReworkAttributeScanner
                             var ai = method.GetCustomAttribute<ReworkAIModifierAttribute>();
                             if (ai != null)
                             {
-                                ReworkAIRegistry.RegisterModifier(ai.TargetJobDef, ai.Priority, AdaptAiModifier(method));
+                                // §48 (anti-fantasma): el hook se inyecta en
+                                // ThinkNode.GetPriority(Pawn), que NO conoce el trabajo
+                                // (jobDefName siempre llega ""). Un modificador con
+                                // TargetJobDef jamás coincidiría en silencio: se
+                                // registra como GLOBAL (filtro null) tras un error
+                                // ruidoso, para que al menos funcione y el modder
+                                // sepa que el filtro no es aplicable en este hook.
+                                if (!string.IsNullOrEmpty(ai.TargetJobDef))
+                                {
+                                    Lg.Error($"[ReworkAIModifier] {method.DeclaringType?.Name}::{method.Name}: " +
+                                             $"TargetJobDef='{ai.TargetJobDef}' NO es compatible con el punto de " +
+                                             "inyección (ThinkNode.GetPriority no tiene contexto de trabajo). " +
+                                             "El modificador se registrará como GLOBAL (TargetJobDef ignorado).");
+                                }
+                                ReworkAIRegistry.RegisterModifier(null, ai.Priority, AdaptAiModifier(method));
                                 aiCount++;
                             }
 
@@ -165,7 +179,22 @@ public static class ReworkAttributeScanner
                                     ? schedule.EveryTicks
                                     : schedule.EveryDay ? GenDate.TicksPerDay
                                     : schedule.EverySeason ? GenDate.TicksPerSeason : 0;
-                                if (interval > 0)
+
+                                // §48: validación ruidosa de un contrato que antes
+                                // fallaba en SILENCIO (método con parámetros caía al
+                                // fallback Invoke(null,null) que lanza y se traga en
+                                // ReworkScheduler; intervalo 0 = no-op total).
+                                if (interval <= 0)
+                                {
+                                    Lg.Error($"[ReworkSchedule] {method.DeclaringType?.Name}::{method.Name}: " +
+                                             "falta el intervalo (EveryTicks/EveryDay/EverySeason); NO se registrará.");
+                                }
+                                else if (method.GetParameters().Length > 0)
+                                {
+                                    Lg.Error($"[ReworkSchedule] {method.DeclaringType?.Name}::{method.Name}: " +
+                                             "el método debe ser static void SIN parámetros; NO se registrará.");
+                                }
+                                else
                                 {
                                     ReworkScheduler.Register(method, interval);
                                     scheduleCount++;
@@ -261,6 +290,10 @@ public static class ReworkAttributeScanner
         // ReworkAPI no puede loguear; conectamos el hook al log central.
         ReworkMigration.LogHook = (modId, from, to) =>
             Lg.Info($"[ReworkMigration] '{modId}': migración {from} → {to} completada.");
+        // §48: los errores de los manejadores del bus, al log central (antes: catch
+        // vacío — un handler roto era invisible).
+        ReworkBus.HandlerError = (msg, e) =>
+            Lg.Error($"{msg}: {e.Message}");
     }
 
     // ---------------------------------------------------------------------------
@@ -532,15 +565,9 @@ public static class ReworkAttributeScanner
     }
 }
 
-/// <summary>
-/// Hooks de ciclo de vida del propio framework (inyectados como los de cualquier mod):
-/// aplicación automática de [ReworkStatusEffect(AutoApply=true)] a colonos nuevos.
-/// </summary>
-public static class ReworkFrameworkLifecycleHooks
-{
-    [ReworkHook(ReworkHookPoint.PawnCreated)]
-    public static void OnPawnCreated(Verse.Pawn pawn)
-    {
-        Rework.Core.ReworkRuntime.StatusEffectRuntime.TryApplyNewbornAuto(pawn);
-    }
-}
+// §48 (auditoría anti-fantasma): la copia de ReworkFrameworkLifecycleHooks que
+// vivía al final de este archivo fue ELIMINADA. Estaba DUPLICADA con la canónica
+// de ReworkCore\ReworkFrameworkLifecycleHooks.cs (idéntico tipo/método en dos
+// ensamblados): LifecycleHooks descartaba la segunda en silencio por colisión de
+// MethodReference.FullName (no distingue ensamblado) y el log "Hook aplicado"
+// salía dos veces. La copia canónica (ReworkCore) es la única que queda.

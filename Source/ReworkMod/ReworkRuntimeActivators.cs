@@ -16,7 +16,9 @@ namespace Rework;
 /// • ReworkPawnTimeline  → [ReworkHook(PawnDied/BabyBorn)] registra eventos históricos
 /// • ReworkRelation      → [ReworkSchedule(EveryDay)] escanea relaciones entre colonos
 /// • ReworkStateSnapshot → [ReworkSchedule(EveryDay)] captura estado de colonos
-/// • ReworkDynamicMutate → [ReworkInit] aplica una mutación demo reversible
+/// • ReworkDynamicMutate → mutación demo reversible, disparada por
+///   ReworkRuntimeActivatorsPostDefs ([StaticConstructorOnStartup], post-Defs —
+///   §48: [ReworkInit] corre en InitializeMods, ANTES de que existan los Defs)
 /// </summary>
 public static class ReworkRuntimeActivators
 {
@@ -212,10 +214,15 @@ public static class ReworkRuntimeActivators
     // ReworkDynamicMutate: aplica una mutación demo reversible en el arranque.
     // ---------------------------------------------------------------------------
     /// <summary>
-    /// En el arranque, aplica una mutación demo: CraftingSpot deja de tener hit points.
+    /// Aplica una mutación demo: CraftingSpot deja de tener hit points.
     /// Demuestra que ApplyMutation funciona y que RevertAll (en hot-reload) lo revierte.
+    ///
+    /// §48: NO lleva [ReworkInit] — InitRunner corre durante InitializeMods, ANTES
+    /// de que PlayDataLoader cargue los Defs (DefDatabase vacío → la mutación era
+    /// un no-op silencioso desde siempre). Ahora la dispara
+    /// ReworkRuntimeActivatorsPostDefs, un [StaticConstructorOnStartup] que corre
+    /// justo cuando los Defs ya existen.
     /// </summary>
-    [ReworkInit(Priority = 5)]
     public static void ApplyDemoMutation()
     {
         try
@@ -235,5 +242,20 @@ public static class ReworkRuntimeActivators
         {
             Lg.Error($"[ReworkDynamicMutate] ApplyDemoMutation falló: {e.Message}");
         }
+    }
+}
+
+/// <summary>
+/// §48 — Activadores que NECESITAN los Defs cargados. [StaticConstructorOnStartup]
+/// corre tras PlayDataLoader (a diferencia de [ReworkInit], que corre en la fase de
+/// InitializeMods sin Defs). El orden entre clases [StaticConstructorOnStartup] no
+/// está garantizado: este activador no depende de los registros del escáner.
+/// </summary>
+[StaticConstructorOnStartup]
+public static class ReworkRuntimeActivatorsPostDefs
+{
+    static ReworkRuntimeActivatorsPostDefs()
+    {
+        ReworkRuntimeActivators.ApplyDemoMutation();
     }
 }

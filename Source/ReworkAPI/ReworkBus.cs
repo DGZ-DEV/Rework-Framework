@@ -195,6 +195,13 @@ public static class ReworkBus
         => subscriptions.TryGetValue(typeof(T), out var list) && list.Count > 0;
 
     /// <summary>
+    /// §48 — Hook de error conectable: ReworkMod lo cablea a Lg.Error. Antes, las
+    /// excepciones de los manejadores se tragaban en SILENCIO (catch vacío) y un
+    /// handler roto era invisible fuera de builds DEBUG.
+    /// </summary>
+    public static System.Action<string, System.Exception>? HandlerError;
+
+    /// <summary>
     /// Publica un evento a todos los suscriptores registrados.
     /// Invoca delegados compilados directamente (sin MethodInfo.Invoke en el hot path).
     /// </summary>
@@ -214,11 +221,11 @@ public static class ReworkBus
                 {
                     // Camino rápido: delegado fuertemente tipado, sin boxing ni reflexión
                     try { typed(evt); }
-                    catch
+                    catch (System.Exception e)
                     {
-#if DEBUG
-                        Console.WriteLine($"[ReworkBus] Error al procesar evento {evtType.Name} en {typed.Method.Name}");
-#endif
+                        // §48: error ruidoso vía hook conectable (ReworkMod lo cablea a Lg)
+                        try { HandlerError?.Invoke($"[ReworkBus] Manejador '{typed.Method.Name}' falló al procesar {evtType.Name}", e); }
+                        catch { /* el log nunca debe romper el dispatch */ }
                     }
                 }
                 else if (sub.FallbackMethod != null)
@@ -228,11 +235,10 @@ public static class ReworkBus
                     {
                         sub.FallbackMethod.Invoke(sub.Target, new object[] { evt });
                     }
-                    catch
+                    catch (System.Exception e)
                     {
-#if DEBUG
-                        Console.WriteLine($"[ReworkBus] Error al procesar evento {evtType.Name} en {sub.FallbackMethod.Name}");
-#endif
+                        try { HandlerError?.Invoke($"[ReworkBus] Manejador '{sub.FallbackMethod.Name}' falló al procesar {evtType.Name}", e); }
+                        catch { /* el log nunca debe romper el dispatch */ }
                     }
                 }
             }

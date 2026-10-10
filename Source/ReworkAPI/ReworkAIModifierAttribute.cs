@@ -6,12 +6,19 @@ namespace Rework;
 /// <summary>
 /// Marca un método para modificar dinámicamente la prioridad o selección de tareas (IA) de un colono.
 /// Permite alterar el comportamiento cognitivo de los pawns sin reimplementar JobGivers pesados.
+///
+/// El hook se inyecta en Verse.AI.ThinkNode.GetPriority(Pawn): tu método recibe
+/// (pawn REAL, prioridad actual) y devuelve la prioridad ajustada (multiplicador global).
 /// </summary>
 [AttributeUsage(AttributeTargets.Method, Inherited = false, AllowMultiple = true)]
 public sealed class ReworkAIModifierAttribute : Attribute
 {
     /// <summary>
-    /// Tipo de trabajo o nombre del JobDef sobre el que actúa (opcional; null = cualquier job).
+    /// ⚠️ §48 — NO SOPORTADO con el punto de inyección actual: ThinkNode.GetPriority
+    /// no tiene contexto de trabajo, así que cualquier valor aquí se IGNORA (el
+    /// escáner lo reporta con un error claro en el log) y el modificador se registra
+    /// como GLOBAL. Se conserva por compatibilidad de firma de futuros hooks con
+    /// contexto de trabajo.
     /// </summary>
     public string? TargetJobDef { get; set; }
 

@@ -20,6 +20,11 @@ public sealed class ReworkQuestAttribute : Attribute
 
 /// <summary>
 /// Clase base para misiones de Rework.
+///
+/// §48 — contrato REAL: el framework solo invoca CanTrigger() (cada 60.000 ticks)
+/// y OnAccepted() (si CanTrigger devolvió true). OnSuccess/OnFailed quedan a
+/// disposición del PROPIO mod (llámalos desde tu lógica cuando la misión termine);
+/// el framework no rastrea el desenlace de las misiones.
 /// </summary>
 public abstract class ReworkQuestBase
 {

@@ -113,6 +113,12 @@ public sealed class ReworkRaidAttribute : Attribute
     /// <summary>Modificador del factor de puntos (curva simple: 0 → 1.0).</summary>
     public float PointsFactor { get; set; } = 1.0f;
 
+    /// <summary>Peso de selección de la estrategia (curva plana; vanilla lo evalúa
+    /// contra los puntos de la incursión en RaidStrategyWorker.SelectionWeight).
+    /// §48: OBLIGATORIO asignar selectionWeightPerPointsCurve — sin ella, vanilla
+    /// lanza NRE dentro del filtro de estrategias y REVIENTA TODAS las raids enemigas.</summary>
+    public float SelectionWeight { get; set; } = 1.0f;
+
     /// <summary>Modo de llegada (defName de PawnsArrivalModeDef, p.ej. "EdgeWalkIn").</summary>
     public string ArriveMode { get; set; } = "EdgeWalkIn";
 
@@ -137,6 +143,14 @@ public sealed class ReworkRaidAttribute : Attribute
 /// <summary>
 /// Registra automáticamente un ThoughtDef de RimWorld en runtime.
 /// Permite crear pensamientos (buffs/debuffs de ánimo) sin escribir XML.
+///
+/// ⚠️ §48 — DOS condiciones que antes no se documentaban:
+/// (1) APLICACIÓN: ninguna ruta vanilla aplica un ThoughtDef arbitrario; algo
+///     debe concederlo (ThoughtWorker/situación, o código tuyo con
+///     pawn.needs.mood.thoughts.memories.TryGainMemory / ThoughtMaker).
+/// (2) CLASE DECORADA: la clase que lleva el atributo NO se conecta al Def —
+///     el pensamiento usa ThoughtClass (default Thought_Memory). Si escribes
+///     lógica en la clase anotada, asigna ThoughtClass = typeof(TuClase).
 /// </summary>
 [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
 public sealed class ReworkThoughtAttribute : Attribute
@@ -168,6 +182,14 @@ public sealed class ReworkThoughtAttribute : Attribute
 /// <summary>
 /// Registra automáticamente un ThingDef de prenda (RimWorld.Apparel) en runtime.
 /// Permite crear ropa y armadura equipable sin escribir XML en Defs/ThingDefs.
+///
+/// ⚠️ §48 — el registro crea el ThingDef, pero no le da OBTENCIÓN: sin
+/// ThingCategoryDef, receta de confección, costList o stock de trader, la
+/// prenda NO aparece en el juego normal (solo spawneable por dev-mode/código).
+/// Además: se crea sin statBases (sin masa/MaxHitPoints — añádelos con
+/// [ReworkMutate] o código si los necesitas) y TexPath debe apuntar a una
+/// textura real. La clase decorada se ignora salvo que pases
+/// ApparelClass = typeof(...) con una subclase de Apparel.
 /// </summary>
 [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
 public sealed class ReworkApparelAttribute : Attribute
