@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModMetaData>
+  <name>Rework Reforjed</name>
+  <author>DGZ</author>
+  <packageId>dgz.rework</packageId>
+  <description>Framework de parcheo en memoria para RimWorld 1.6. Es la base de la que dependen otros mods: reescribe el ensamblado del juego con Mono.Cecil justo antes de que cargue, y así pueden añadir campos, métodos, hooks y contenido a clases existentes directamente desde C#, sin tocar ningún archivo en disco.
+
+Todo ocurre en memoria: tu instalación de RimWorld queda intacta y el mod se desinstala borrando su carpeta. La API se consume con atributos normales de C# ([ReworkField], [ReworkHook], [ReworkJob], [ReworkRedirect]...). Incluye sistemas declarativos de combate (absorción, daño periódico, knockback, cleave, daños extra, desvío, escudos) y contenido (spawners, variantes, piezas instalables, slots, habilidades). El manual completo está en MANUAL.md, dentro de la carpeta del mod, y el código fuente en Source/.
+
+Diseñado y verificado contra RimWorld 1.6.4850 (rev646). No usa Harmony ni interfiere con él.</description>
+  <supportedVersions>
+    <li>1.6</li>
+  </supportedVersions>
+</ModMetaData>
